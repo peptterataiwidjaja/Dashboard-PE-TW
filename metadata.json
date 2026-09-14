@@ -1,0 +1,8 @@
+{
+  "name": "Dashboard Akurasi SMV \u0026 Revenue V.2",
+  "description": "Dashboard interaktif PT Teratai Widjaja untuk pemantauan akurasi SMV, analisis tren temuan rekayasa proses (PE) \u0026 diagnostik SMV, kinerja revenue, bank data manual style \u0026 jadwal lembur (OT), visualisasi kalender tumpang tindih per line, modul notifikasi push, serta ekspor PDF persetujuan PE dan FM.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

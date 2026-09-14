@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f1f4b"/>
+      <stop offset="100%" stop-color="#1a3478"/>
+    </linearGradient>
+    <linearGradient id="redGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ef4444"/>
+      <stop offset="100%" stop-color="#b91c1c"/>
+    </linearGradient>
+    <filter id="dropShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Background with subtle corner radius -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  
+  <!-- Outer Ring Accent -->
+  <circle cx="256" cy="256" r="216" stroke="#ffffff" stroke-opacity="0.12" stroke-width="4" fill="none"/>
+  
+  <!-- Subtle sewing stitch line accent around inner perimeter -->
+  <circle cx="256" cy="256" r="198" stroke="#38bdf8" stroke-opacity="0.3" stroke-width="3" stroke-dasharray="8 8" fill="none"/>
+
+  <!-- Main Symbol Group (Safe Zone inside central 80%) -->
+  <g filter="url(#dropShadow)" transform="translate(256, 230)">
+    <!-- Blue Dynamic Curved Swoosh (Grounded in TW Logo) -->
+    <path 
+      d="M -160 -40 C -80 30 10 70 120 62 C 160 58 190 38 210 10 C 180 45 130 85 80 88 C 0 90 -80 40 -160 -40 Z" 
+      fill="#60a5fa" 
+    />
+    
+    <!-- Red Intersecting Curved Swoosh -->
+    <path 
+      d="M -40 -10 C 0 25 50 48 105 58 C 140 64 165 62 185 55 C 162 64 122 66 84 57 C 36 46 -6 24 -40 -10 Z" 
+      fill="url(#redGrad)" 
+    />
+
+    <!-- Stylized Central Monogram & Needle / Sewing Core -->
+    <circle cx="-10" cy="-60" r="14" fill="#ffffff"/>
+    <path d="M -10 -40 L -10 30" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
+    <path d="M -10 -20 C 20 -20 50 -10 70 15" stroke="#f87171" stroke-width="5" stroke-linecap="round" fill="none"/>
+  </g>
+
+  <!-- Bottom Badge: TERATAI WIDJAJA -->
+  <g transform="translate(256, 400)">
+    <rect x="-140" y="-22" width="280" height="44" rx="22" fill="#ffffff" fill-opacity="0.15" stroke="#ffffff" stroke-opacity="0.25" stroke-width="1.5"/>
+    <text 
+      x="0" 
+      y="8" 
+      text-anchor="middle" 
+      fill="#ffffff" 
+      font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" 
+      font-size="20" 
+      font-weight="800" 
+      letter-spacing="3.5px"
+    >
+      TERATAI WIDJAJA
+    </text>
+  </g>
+
+  <!-- Subtitle: SMV & PRODUCTION -->
+  <text 
+    x="256" 
+    y="442" 
+    text-anchor="middle" 
+    fill="#93c5fd" 
+    font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" 
+    font-size="13" 
+    font-weight="700" 
+    letter-spacing="2.5px"
+  >
+    SMV &amp; PRODUCTION OFFLINE
+  </text>
+</svg>

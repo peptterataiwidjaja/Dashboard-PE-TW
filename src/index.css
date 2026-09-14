@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@layer utilities {
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+}
+
+@media print {
+  header, footer, nav, button, #btn-export-pdf, #btn-open-apps-script, .pdf-preview-toolbar, .no-print {
+    display: none !important;
+  }
+  
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .pdf-preview-modal-backdrop {
+    background: transparent !important;
+    position: static !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  .pdf-preview-paper {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    transform: none !important;
+    max-width: 100% !important;
+  }
+
+  .opacity-0.pointer-events-none {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    position: static !important;
+    left: 0 !important;
+    display: block !important;
+  }
+}

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 250" fill="none">
+  <!-- Blue Dynamic Curved Swoosh -->
+  <path 
+    d="M 16 38 C 105 106 200 156 312 148 C 378 143 440 114 496 58 C 452 108 376 162 298 165 C 196 168 102 118 16 38 Z" 
+    fill="#1a3478" 
+  />
+  
+  <!-- Red Intersecting Curved Swoosh -->
+  <path 
+    d="M 182 72 C 228 112 284 142 344 154 C 388 163 418 160 442 153 C 414 164 366 166 318 155 C 262 143 214 116 182 72 Z" 
+    fill="#d11f26" 
+  />
+
+  <!-- TERATAI WIDJAJA Logotype in Navy Blue -->
+  <text 
+    x="256" 
+    y="222" 
+    text-anchor="middle" 
+    fill="#1a3478" 
+    font-family="'Plus Jakarta Sans', 'Segoe UI', Arial, sans-serif" 
+    font-size="42" 
+    font-weight="800" 
+    letter-spacing="4px"
+  >
+    TERATAI WIDJAJA
+  </text>
+</svg>
