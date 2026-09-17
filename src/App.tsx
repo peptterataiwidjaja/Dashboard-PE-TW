@@ -98,7 +98,8 @@ export default function App() {
   const [isSheetModalOpen, setIsSheetModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isPdfPreviewOpen, setIsPdfPreviewOpen] = useState(false);
-  const [pdfPreviewType, setPdfPreviewType] = useState<'productivity' | 'incidents'>('productivity');
+  const [pdfPreviewType, setPdfPreviewType] = useState<'productivity' | 'incidents' | 'repair'>('productivity');
+  const [pdfInitialDate, setPdfInitialDate] = useState<string | undefined>(undefined);
 
   // Bank Data Manual Style Scheduling & Overtime (OT) State
   const [styleSchedules, setStyleSchedules] = useState<StyleScheduleRecord[]>(() => {
@@ -629,8 +630,9 @@ export default function App() {
   };
 
   // Export to PDF / Preview PDF
-  const handleExportPdf = (type: 'productivity' | 'incidents' = 'productivity') => {
+  const handleExportPdf = (type: 'productivity' | 'incidents' | 'repair' = 'productivity', initialDate?: string) => {
     setPdfPreviewType(type);
+    setPdfInitialDate(initialDate);
     setIsPdfPreviewOpen(true);
   };
 
@@ -641,7 +643,7 @@ export default function App() {
       <Navbar
         dataSource={dataSource}
         onOpenSheetModal={() => setIsSheetModalOpen(true)}
-        onExportPdf={() => handleExportPdf('productivity')}
+        onExportPdf={() => handleExportPdf(activeTab === 'repair-defect' ? 'repair' : 'productivity')}
         onManualRefresh={handleManualRefresh}
         isExporting={isExporting}
         activeTab={activeTab}
@@ -1180,13 +1182,19 @@ export default function App() {
       {/* Pratinjau Dokumen PDF Sebelum Dicetak atau Diunduh */}
       <PdfPreviewModal
         isOpen={isPdfPreviewOpen}
-        onClose={() => setIsPdfPreviewOpen(false)}
+        onClose={() => {
+          setIsPdfPreviewOpen(false);
+          setPdfInitialDate(undefined);
+        }}
         lines={activeLines}
         summary={summary}
         monthlyRecap={monthlyRecap}
+        repairRecords={repairRecords}
         incidents={incidents}
         initialReportType={pdfPreviewType}
         initialSelectedMonth={selectedMonth}
+        initialSelectedDate={pdfInitialDate}
+        canPrintPdf={currentUser.canPrintPdf}
       />
 
       {/* Modal Input Bank Data Manual Style & Jadwal OT */}

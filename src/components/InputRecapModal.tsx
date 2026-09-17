@@ -11,7 +11,8 @@ import {
   Layers, 
   ArrowRight,
   TrendingDown,
-  ShieldAlert
+  ShieldAlert,
+  Info
 } from 'lucide-react';
 import { MonthlyProductivityRecord, BankDataModel, StyleScheduleRecord } from '../types';
 import { calculateEfficiency, calculateProductivityPerOp, generateSmartAnalysis } from '../data/monthlyRecapData';
@@ -280,7 +281,9 @@ export const InputRecapModal: React.FC<InputRecapModalProps> = ({
       formData.actualDailyPcs,
       formData.targetDailyPcs,
       calcEff,
-      formData.defectPercent
+      formData.defectPercent,
+      formData.manpower,
+      calcProd
     );
     setFormData(prev => ({
       ...prev,
@@ -465,7 +468,7 @@ export const InputRecapModal: React.FC<InputRecapModalProps> = ({
                 onChange={(e) => {
                   const newDate = e.target.value;
                   const day = new Date(newDate + 'T00:00:00').getDay();
-                  const hours = day === 6 ? 5 : 8;
+                  const hours = day === 0 ? 0 : (day === 6 ? 5 : 8);
                   setFormData(prev => ({ 
                     ...prev, 
                     date: newDate,
@@ -475,6 +478,32 @@ export const InputRecapModal: React.FC<InputRecapModalProps> = ({
                 className="w-full text-xs font-bold px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-600 text-slate-900"
                 required
               />
+              {/* Day info badge */}
+              {(() => {
+                if (!formData.date) return null;
+                const day = new Date(formData.date + 'T00:00:00').getDay();
+                if (day === 0) {
+                  return (
+                    <div className="mt-1 text-[11px] font-bold text-red-700 bg-red-50 border border-red-200 px-2 py-1 rounded-md flex items-center space-x-1.5 animate-in fade-in">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-600" />
+                      <span>⚠️ Hari Minggu: Pabrik Libur & Tidak Ada Jadwal Sewing</span>
+                    </div>
+                  );
+                } else if (day === 6) {
+                  return (
+                    <div className="mt-1 text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-1 rounded-md flex items-center space-x-1.5 animate-in fade-in">
+                      <Info className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+                      <span>ℹ️ Hari Sabtu: Hanya berlaku untuk 5 jam kerja saja (300 menit).</span>
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="mt-1 text-[11px] text-slate-500 flex items-center space-x-1">
+                      <span>✓ Senin - Jumat: 8 jam kerja standar</span>
+                    </div>
+                  );
+                }
+              })()}
             </div>
           </div>
 
@@ -494,7 +523,7 @@ export const InputRecapModal: React.FC<InputRecapModalProps> = ({
                   {formData.style || '(Belum ada style teralokasi)'}
                 </span>
                 <span className="text-xs text-slate-500">
-                  Target PO: {planOrderQty.toLocaleString('id-ID')} pcs • SMV Standar: {formData.smvStandard} menit • Jam: {formData.workingHours} jam
+                  Target PO: {planOrderQty.toLocaleString('id-ID')} pcs • SMV Standar: {formData.smvStandard} menit • Jam Kerja: {formData.workingHours} jam
                 </span>
               </div>
               <div className="text-right">
@@ -532,59 +561,125 @@ export const InputRecapModal: React.FC<InputRecapModalProps> = ({
             </div>
           )}
 
-          {/* PRIMARY FOCUSED INPUT: HANYA OUTPUT AKTUAL */}
-          <div className="p-4 bg-linear-to-br from-blue-50 to-indigo-50/80 border-2 border-blue-500 rounded-2xl shadow-xs space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <label className="block text-sm font-black text-blue-950 uppercase tracking-wide">
-                  Masukan Output Aktual Hari Ini (Pcs) *
-                </label>
-                <p className="text-xs text-blue-800">
-                  Input ini otomatis menghitung efisiensi, produktivitas, dan mengurangi sisa target order PO
-                </p>
+          {/* PRIMARY FOCUSED INPUTS: OUTPUT AKTUAL & JUMLAH OPERATOR YANG MASUK */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            {/* 1. Masukan Output Aktual Hari Ini */}
+            <div className="p-4 bg-linear-to-br from-blue-50 to-indigo-50/80 border-2 border-blue-500 rounded-2xl shadow-xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-xs font-black text-blue-950 uppercase tracking-wide">
+                    Masukan Output Aktual (Pcs) *
+                  </label>
+                  <p className="text-[10px] text-blue-800">
+                    Garmen jadi sewing lini hari ini
+                  </p>
+                </div>
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
+                  isDailyReached ? 'bg-emerald-600 text-white' : 'bg-red-500 text-white'
+                }`}>
+                  {isDailyReached ? '✓ Tercapai' : '✕ Kurang'}
+                </span>
               </div>
-              <span className={`text-xs font-black px-2.5 py-1 rounded-lg ${
-                isDailyReached ? 'bg-emerald-600 text-white' : 'bg-red-500 text-white'
-              }`}>
-                {isDailyReached ? '✓ Target Tercapai' : '✕ Di Bawah Target'}
+
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  min={0}
+                  value={formData.actualDailyPcs === 0 ? '' : formData.actualDailyPcs}
+                  onChange={(e) => setFormData(prev => ({ ...prev, actualDailyPcs: Number(e.target.value) || 0 }))}
+                  placeholder="0"
+                  className="w-full text-2xl font-mono font-black px-3.5 py-2 bg-white border-2 border-blue-400 rounded-xl text-blue-900 focus:outline-hidden focus:ring-3 focus:ring-blue-600 shadow-inner"
+                  autoFocus
+                  required
+                />
+                <span className="text-xs font-bold text-blue-900 shrink-0">Pcs</span>
+              </div>
+
+              {/* Quick adjust buttons */}
+              <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                {[50, 100, 200, 500].map(add => (
+                  <button
+                    key={add}
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, actualDailyPcs: prev.actualDailyPcs + add }))}
+                    className="px-2 py-0.5 bg-white hover:bg-blue-100 text-blue-800 border border-blue-300 rounded text-[11px] font-bold transition-all cursor-pointer"
+                  >
+                    +{add}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, actualDailyPcs: formData.targetDailyPcs }))}
+                  className="px-2 py-0.5 bg-blue-700 hover:bg-blue-800 text-white rounded text-[11px] font-bold transition-all cursor-pointer"
+                >
+                  = Target
+                </button>
+              </div>
+            </div>
+
+            {/* 2. Masukan Jumlah Operator yang Masuk */}
+            <div className="p-4 bg-linear-to-br from-indigo-50 to-blue-50/80 border-2 border-indigo-500 rounded-2xl shadow-xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-xs font-black text-indigo-950 uppercase tracking-wide">
+                    Operator Masuk (Orang) *
+                  </label>
+                  <p className="text-[10px] text-indigo-800">
+                    Jumlah operator hadir aktif menjahit
+                  </p>
+                </div>
+                <span className="text-[10px] font-bold text-indigo-800 bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200">
+                  Pembagi Produktivitas
+                </span>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  min={1}
+                  value={formData.manpower === 0 ? '' : formData.manpower}
+                  onChange={(e) => setFormData(prev => ({ ...prev, manpower: Math.max(1, Number(e.target.value) || 1) }))}
+                  placeholder="36"
+                  className="w-full text-2xl font-mono font-black px-3.5 py-2 bg-white border-2 border-indigo-400 rounded-xl text-indigo-900 focus:outline-hidden focus:ring-3 focus:ring-indigo-600 shadow-inner"
+                  required
+                />
+                <span className="text-xs font-bold text-indigo-900 shrink-0">Orang</span>
+              </div>
+
+              {/* Quick adjust buttons for operator */}
+              <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                {[-5, -1, 1, 5].map(diff => (
+                  <button
+                    key={diff}
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, manpower: Math.max(1, prev.manpower + diff) }))}
+                    className="px-2 py-0.5 bg-white hover:bg-indigo-100 text-indigo-800 border border-indigo-300 rounded text-[11px] font-bold transition-all cursor-pointer"
+                  >
+                    {diff > 0 ? `+${diff}` : diff}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, manpower: activeLinkedPlan?.manpower || 36 }))}
+                  className="px-2 py-0.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-[11px] font-bold transition-all cursor-pointer"
+                >
+                  = Standar ({activeLinkedPlan?.manpower || 36})
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Formula Info Banner */}
+          <div className="px-3 py-2 bg-blue-50/70 border border-blue-200 rounded-xl flex items-center justify-between text-xs">
+            <div className="flex items-center space-x-2 text-blue-900 font-medium">
+              <Calculator className="w-4 h-4 text-blue-700 shrink-0" />
+              <span>
+                <strong>Perhitungan Produktivitas:</strong> Output Aktual ({formData.actualDailyPcs} pcs) ÷ Operator Masuk ({formData.manpower} orang) = <strong className="text-blue-700 underline">{calcProd} pcs/operator</strong>
               </span>
             </div>
-
-            <div className="flex items-center space-x-2">
-              <input
-                type="number"
-                min={0}
-                value={formData.actualDailyPcs === 0 ? '' : formData.actualDailyPcs}
-                onChange={(e) => setFormData(prev => ({ ...prev, actualDailyPcs: Number(e.target.value) || 0 }))}
-                placeholder="0"
-                className="w-full text-2xl font-mono font-black px-4 py-2.5 bg-white border-2 border-blue-400 rounded-xl text-blue-900 focus:outline-hidden focus:ring-3 focus:ring-blue-600 shadow-inner"
-                autoFocus
-                required
-              />
-              <span className="text-sm font-bold text-blue-900 shrink-0">Pcs</span>
-            </div>
-
-            {/* Quick adjust buttons */}
-            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[11px] font-semibold text-blue-900 mr-1">Penyesuaian Cepat:</span>
-              {[50, 100, 200, 500].map(add => (
-                <button
-                  key={add}
-                  type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, actualDailyPcs: prev.actualDailyPcs + add }))}
-                  className="px-2 py-1 bg-white hover:bg-blue-100 text-blue-800 border border-blue-300 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer"
-                >
-                  +{add}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setFormData(prev => ({ ...prev, actualDailyPcs: formData.targetDailyPcs }))}
-                className="px-2 py-1 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer"
-              >
-                = Target ({formData.targetDailyPcs})
-              </button>
-            </div>
+            <span className="text-[10px] font-bold text-blue-800 bg-white px-2 py-0.5 rounded border border-blue-200">
+              Auto-Sync
+            </span>
           </div>
 
           {/* READ-ONLY LIVE RESULTS: "DAN SISANYA DAPAT DILIHAT" */}

@@ -22,17 +22,19 @@ import {
   X,
   Save,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Filter
 } from 'lucide-react';
 import { RepairDefectRecord, DefectBreakdown, FishboneAnalysis } from '../types';
 import { generateAutomaticFishbone } from '../data/repairDefectData';
-import { formatPercent } from '../utils/formatters';
+import { formatPercent, formatIndonesianFullDate, formatIndonesianFullDateWithDay } from '../utils/formatters';
+import { PrintRepairModal } from './PrintRepairModal';
 
 interface RepairDefectViewProps {
   records: RepairDefectRecord[];
   onSaveRecord: (record: RepairDefectRecord) => void;
   onDeleteRecord: (id: string) => void;
-  onOpenPdfReport?: (reportType: 'productivity' | 'incidents') => void;
+  onOpenPdfReport?: (reportType: 'productivity' | 'incidents' | 'repair', initialDate?: string) => void;
   canInputData?: boolean;
   canEditDelete?: boolean;
 }
@@ -52,6 +54,30 @@ export const RepairDefectView: React.FC<RepairDefectViewProps> = ({
   const [editingRecord, setEditingRecord] = useState<RepairDefectRecord | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedLineFilter, setSelectedLineFilter] = useState<number | 'all'>('all');
+  const [selectedDateFilter, setSelectedDateFilter] = useState<string>('all');
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+
+  // Distinct recorded dates for repair
+  const availableDates = React.useMemo(() => {
+    return Array.from(new Set(records.map(r => r.date).filter(Boolean))).sort().reverse();
+  }, [records]);
+
+  // Selected date statistics for daily recapitulation
+  const selectedDayStats = React.useMemo(() => {
+    if (selectedDateFilter === 'all') return null;
+    const dayRecs = records.filter(r => r.date === selectedDateFilter);
+    const checked = dayRecs.reduce((acc, r) => acc + r.totalCheckedPcs, 0);
+    const repair = dayRecs.reduce((acc, r) => acc + r.totalRepairPcs, 0);
+    const rate = checked > 0 ? (repair / checked) * 100 : 0;
+    const critical = dayRecs.filter(r => r.repairPercent >= 10.0).length;
+    return {
+      lineCount: dayRecs.length,
+      totalChecked: checked,
+      totalRepair: repair,
+      repairRate: rate,
+      criticalCount: critical
+    };
+  }, [records, selectedDateFilter]);
 
   // Selected record for Fishbone diagram
   const activeRecord = records.find(r => r.id === selectedRecordId) || records[0];
@@ -62,14 +88,15 @@ export const RepairDefectView: React.FC<RepairDefectViewProps> = ({
   const avgRepairRate = totalCheckedAll > 0 ? (totalRepairAll / totalCheckedAll) * 100 : 0;
   const criticalCount = records.filter(r => r.repairPercent >= 10.0).length;
 
-  // Filtered by both Line selection and Search query
+  // Filtered by Line selection, Date selection, and Search query
   const filteredRecords = records.filter(r => {
     const matchLine = selectedLineFilter === 'all' || r.lineId === selectedLineFilter;
+    const matchDate = selectedDateFilter === 'all' || r.date === selectedDateFilter;
     const matchSearch = !searchFilter || 
       r.lineName.toLowerCase().includes(searchFilter.toLowerCase()) ||
       r.style.toLowerCase().includes(searchFilter.toLowerCase()) ||
       r.date.includes(searchFilter);
-    return matchLine && matchSearch;
+    return matchLine && matchDate && matchSearch;
   });
 
   // Calculate distinct lines and their quality summary
@@ -179,13 +206,52 @@ export const RepairDefectView: React.FC<RepairDefectViewProps> = ({
           )}
 
           {onOpenPdfReport && (
-            <button
-              onClick={() => onOpenPdfReport('productivity')}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-            >
-              <Printer className="w-4 h-4 text-slate-600" />
-              <span>Cetak Laporan PDF</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-300">
+              <button
+                type="button"
+                onClick={() => setIsPrintModalOpen(true)}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-800 rounded-lg text-xs font-bold transition-all border border-slate-200 shadow-2xs active:scale-95 cursor-pointer"
+                title="Buka dialog lengkap pilihan tanggal data repair untuk cetak PDF"
+              >
+                <Printer className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Pilihan Cetak per Hari...</span>
+              </button>
+
+              <div className="flex items-center space-x-1 pl-1">
+                <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                <select
+                  value={selectedDateFilter}
+                  onChange={(e) => setSelectedDateFilter(e.target.value)}
+                  className="bg-white text-slate-800 text-xs font-semibold px-2 py-1.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                  title="Pilih tanggal data repair untuk disaring atau dicetak"
+                >
+                  <option value="all">Semua Tanggal Data</option>
+                  {availableDates.map(d => (
+                    <option key={d} value={d}>
+                      Tgl: {formatDate(d)} ({records.filter(r => r.date === d).length} Lini)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => onOpenPdfReport('repair', selectedDateFilter !== 'all' ? selectedDateFilter : (availableDates[0] || undefined))}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
+                title={
+                  selectedDateFilter !== 'all'
+                    ? `Cetak Laporan Rekapitulasi Repair Harian untuk Tanggal ${formatDate(selectedDateFilter)}`
+                    : 'Cetak Laporan Rekapitulasi Repair Harian'
+                }
+              >
+                <Printer className="w-3.5 h-3.5 text-white" />
+                <span>
+                  {selectedDateFilter !== 'all' 
+                    ? `Cetak Rekap Tgl ${formatDate(selectedDateFilter)}` 
+                    : 'Cetak Rekap Repair Harian'}
+                </span>
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -246,7 +312,150 @@ export const RepairDefectView: React.FC<RepairDefectViewProps> = ({
         </div>
       </div>
 
-      {/* PILIHAN LINE BAR: Selector Line untuk melihat masalah spesifik dalam line */}
+      {/* PANEL PILIHAN CETAK LAPORAN REKAPITULASI REPAIR PER HARI */}
+      {onOpenPdfReport && (
+        <div className="bg-white rounded-2xl border-2 border-emerald-500/40 p-4 sm:p-5 shadow-xs space-y-4 relative overflow-hidden">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
+            <div className="flex items-start space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200 shadow-2xs">
+                <Printer className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 tracking-tight">
+                    Pilihan Cetak Laporan Rekapitulasi Repair per Hari
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                    Standar A4 QC & PE
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Pilih tanggal data pemeriksaan untuk mencetak dokumen resmi PDF harian lengkap dengan Pareto cacat, lini kritis, dan lembar pengesahan tanda tangan.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsPrintModalOpen(true)}
+                className="inline-flex items-center space-x-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-300 cursor-pointer"
+              >
+                <Calendar className="w-3.5 h-3.5 text-slate-600" />
+                <span>Pilih Tanggal Lain...</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onOpenPdfReport('repair', selectedDateFilter !== 'all' ? selectedDateFilter : (availableDates[0] || undefined))}
+                disabled={availableDates.length === 0}
+                className="inline-flex items-center space-x-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-700/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>
+                  {selectedDateFilter !== 'all'
+                    ? `Cetak Rekap Harian (${formatDate(selectedDateFilter)})`
+                    : availableDates[0]
+                      ? `Cetak Rekap Harian (${formatDate(availableDates[0])})`
+                      : 'Cetak Rekap Harian'}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Date Pills: Pilih Tanggal Pemeriksaan */}
+          <div className="space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
+              <span className="font-extrabold text-slate-800 uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
+                <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Pilihan Tanggal Data Repair Tersedia:</span>
+              </span>
+              <span className="text-[11px] text-slate-500">
+                Pilih tanggal untuk menyaring tabel dan menentukan tanggal cetak laporan harian
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 overflow-x-auto pb-1.5 no-scrollbar">
+              <button
+                type="button"
+                onClick={() => setSelectedDateFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  selectedDateFilter === 'all'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                }`}
+              >
+                Semua Tanggal ({records.length} Lini)
+              </button>
+
+              {availableDates.map(dateStr => {
+                const dayRecs = records.filter(r => r.date === dateStr);
+                const dayChecked = dayRecs.reduce((acc, r) => acc + r.totalCheckedPcs, 0);
+                const dayRepair = dayRecs.reduce((acc, r) => acc + r.totalRepairPcs, 0);
+                const dayRate = dayChecked > 0 ? (dayRepair / dayChecked) * 100 : 0;
+                const hasCritical = dayRecs.some(r => r.repairPercent >= 10.0);
+                const isSelected = selectedDateFilter === dateStr;
+
+                return (
+                  <button
+                    key={dateStr}
+                    type="button"
+                    onClick={() => setSelectedDateFilter(dateStr)}
+                    className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer border ${
+                      isSelected
+                        ? 'bg-emerald-50 text-emerald-900 border-emerald-500 ring-2 ring-emerald-400 shadow-xs'
+                        : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    <span>{formatIndonesianFullDateWithDay(dateStr)}</span>
+                    <span className="px-1.5 py-0.2 rounded-md bg-slate-100 text-[10px] text-slate-600 font-mono">
+                      {dayRecs.length} Line
+                    </span>
+                    <span className={`text-[10px] font-mono ${dayRate >= 10 ? 'text-red-600 font-black' : dayRate > 3 ? 'text-amber-600' : 'text-emerald-700'}`}>
+                      {formatPercent(dayRate)}
+                    </span>
+                    {hasCritical && (
+                      <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" title="Ada Lini Kritis (≥10%)" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Selected Date Summary Indicator */}
+            {selectedDayStats && selectedDateFilter !== 'all' && (
+              <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                  <span className="font-black text-emerald-900">
+                    Target Rekap Harian: {formatIndonesianFullDateWithDay(selectedDateFilter)}
+                  </span>
+                  <span className="text-slate-300 hidden sm:inline">•</span>
+                  <span className="text-slate-600">{selectedDayStats.lineCount} Lini Sewing</span>
+                  <span className="text-slate-300 hidden sm:inline">•</span>
+                  <span className="text-slate-600">Diperiksa: {selectedDayStats.totalChecked.toLocaleString('id-ID')} pcs</span>
+                  <span className="text-slate-300 hidden sm:inline">•</span>
+                  <span className="text-slate-600">Repair: {selectedDayStats.totalRepair} pcs</span>
+                  <span className="text-slate-300 hidden sm:inline">•</span>
+                  <span className={`font-bold ${selectedDayStats.repairRate >= 10 ? 'text-red-600' : selectedDayStats.repairRate > 3 ? 'text-amber-600' : 'text-emerald-700'}`}>
+                    Repair Rate: {formatPercent(selectedDayStats.repairRate)}
+                  </span>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => onOpenPdfReport('repair', selectedDateFilter)}
+                    className="inline-flex items-center space-x-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-2xs active:scale-95 cursor-pointer"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Cetak PDF Tanggal Ini</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center space-x-2">
@@ -555,6 +764,16 @@ export const RepairDefectView: React.FC<RepairDefectViewProps> = ({
                           <Compass className="w-3 h-3" />
                           <span>Fishbone</span>
                         </button>
+
+                        {onOpenPdfReport && (
+                          <button
+                            onClick={() => onOpenPdfReport('repair', r.date)}
+                            className="p-1 hover:bg-emerald-50 text-slate-500 hover:text-emerald-700 rounded transition-colors cursor-pointer"
+                            title={`Cetak Rekapitulasi Harian Tanggal ${formatDate(r.date)}`}
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                          </button>
+                        )}
 
                         {canEditDelete && (
                           <>
@@ -888,6 +1107,21 @@ export const RepairDefectView: React.FC<RepairDefectViewProps> = ({
             setSelectedRecordId(record.id);
           }}
           initialData={editingRecord}
+        />
+      )}
+
+      {/* MODAL PILIHAN CETAK LAPORAN REPAIR PER HARI */}
+      {isPrintModalOpen && (
+        <PrintRepairModal
+          isOpen={isPrintModalOpen}
+          onClose={() => setIsPrintModalOpen(false)}
+          records={records}
+          initialSelectedDate={selectedDateFilter !== 'all' ? selectedDateFilter : undefined}
+          onPrint={(date) => {
+            if (onOpenPdfReport) {
+              onOpenPdfReport('repair', date !== 'all' ? date : undefined);
+            }
+          }}
         />
       )}
 

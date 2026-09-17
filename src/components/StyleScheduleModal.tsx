@@ -419,6 +419,33 @@ export const StyleScheduleModal: React.FC<StyleScheduleModalProps> = ({
                 className="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
                 required
               />
+              {/* Indikator Aturan Hari Kerja */}
+              {(() => {
+                if (!startDate) return null;
+                const d = new Date(startDate + 'T00:00:00');
+                const day = d.getDay();
+                if (day === 0) {
+                  return (
+                    <div className="mt-1 text-[11px] font-bold text-red-700 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg flex items-center space-x-1.5 animate-in fade-in">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-600" />
+                      <span>⚠️ Hari Minggu: Tidak ada jadwal sewing (Pabrik Libur). Alokasi otomatis efektif mulai hari Senin.</span>
+                    </div>
+                  );
+                } else if (day === 6) {
+                  return (
+                    <div className="mt-1 text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg flex items-center space-x-1.5 animate-in fade-in">
+                      <Info className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+                      <span>ℹ️ Hari Sabtu: Hanya berlaku untuk 5 jam kerja saja (300 menit).</span>
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="mt-1 text-[11px] font-medium text-slate-500 flex items-center space-x-1">
+                      <span>✓ Senin - Jumat: 8 jam kerja standar</span>
+                    </div>
+                  );
+                }
+              })()}
             </div>
 
             {/* Target Output per Hari (Pcs/Hari) */}

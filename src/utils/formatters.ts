@@ -69,6 +69,10 @@ export const INDONESIAN_MONTH_NAMES = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
+export const INDONESIAN_DAY_NAMES = [
+  'Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'
+];
+
 export function formatMonthYearIndonesian(yearMonth: string): string {
   if (!yearMonth || !yearMonth.includes('-')) return yearMonth;
   const [year, monthStr] = yearMonth.split('-');
@@ -86,6 +90,21 @@ export function formatIndonesianFullDate(dateStr: string): string {
     const d = parts[2];
     const monthName = INDONESIAN_MONTH_NAMES[mIdx] || parts[1];
     return `${d} ${monthName} ${y}`;
+  }
+  return dateStr;
+}
+
+export function formatIndonesianFullDateWithDay(dateStr: string): string {
+  if (!dateStr || !dateStr.includes('-')) return dateStr;
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const y = parseInt(parts[0], 10);
+    const mIdx = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    const dateObj = new Date(y, mIdx, d);
+    const dayName = INDONESIAN_DAY_NAMES[dateObj.getDay()] || '';
+    const monthName = INDONESIAN_MONTH_NAMES[mIdx] || parts[1];
+    return `${dayName ? `${dayName}, ` : ''}${d} ${monthName} ${y}`;
   }
   return dateStr;
 }

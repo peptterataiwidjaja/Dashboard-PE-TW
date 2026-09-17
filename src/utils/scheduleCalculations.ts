@@ -29,13 +29,13 @@ export function isSaturdayDate(date: Date | string): boolean {
 
 /**
  * Mendapatkan jam kerja standar hari:
- * - Minggu = 0 jam (Libur)
- * - Sabtu = setengah hari (standardHours / 2, e.g. 4 jam)
- * - Senin - Jumat = standardHours (e.g. 8 jam)
+ * - Minggu = 0 jam (Libur / Tidak ada jadwal sewing)
+ * - Sabtu = 5 jam kerja saja (300 menit)
+ * - Senin - Jumat = standardHours (e.g. 8 jam / 480 menit)
  */
 export function getStandardWorkingHoursForDate(date: Date | string, standardHours: number = 8): number {
   if (isSundayDate(date)) return 0;
-  if (isSaturdayDate(date)) return Math.max(1, Math.round(standardHours / 2));
+  if (isSaturdayDate(date)) return 5;
   return standardHours;
 }
 
@@ -288,9 +288,9 @@ export function simulateFiveDayVsSixDayScenario(schedule: StyleScheduleRecord): 
 
 /**
  * Tambah hari kerja pada kalender:
- * - Setiap hari Minggu: LIBUR (0 hari kerja)
- * - Setiap hari Sabtu: MASUK SETENGAH HARI (0.5 hari kerja)
- * - Senin s/d Jumat: 1.0 hari kerja normal
+ * - Setiap hari Minggu: LIBUR / TIDAK ADA JADWAL SEWING (0 jam)
+ * - Setiap hari Sabtu: HANYA BERLAKU 5 JAM KERJA (5/8 = 0.625 hari kerja)
+ * - Senin s/d Jumat: 8 jam kerja normal (1.0 hari kerja)
  */
 export function addWorkingDays(startDateStr: string, daysToAdd: number): string {
   if (daysToAdd <= 0) return startDateStr;
@@ -301,13 +301,13 @@ export function addWorkingDays(startDateStr: string, daysToAdd: number): string 
     curr.setDate(curr.getDate() + 1);
     const dayOfWeek = curr.getDay();
     if (dayOfWeek === 0) {
-      // Minggu = Libur
+      // Minggu = Libur (Tidak ada jadwal sewing)
       continue;
     } else if (dayOfWeek === 6) {
-      // Sabtu = Masuk Setengah Hari (0.5 hari)
-      accumulated += 0.5;
+      // Sabtu = 5 jam kerja saja (5/8 hari)
+      accumulated += 5 / 8;
     } else {
-      // Senin - Jumat = 1.0 hari kerja penuh
+      // Senin - Jumat = 8 jam kerja penuh (1.0 hari)
       accumulated += 1.0;
     }
   }

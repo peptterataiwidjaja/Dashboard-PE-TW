@@ -105,7 +105,11 @@ export const MonthlyRecapView: React.FC<MonthlyRecapViewProps> = ({
       ? filteredRecords.reduce((acc, r) => acc + r.efficiencyPercent, 0) / filteredRecords.length
       : 0;
 
-    const totalManpower = filteredRecords.reduce((acc, r) => acc + r.manpower, 0);
+    const totalManpower = filteredRecords.reduce((acc, r) => acc + (r.manpower || 0), 0);
+    const avgProductivityPerOp = totalManpower > 0
+      ? Number((totalActualDaily / totalManpower).toFixed(1))
+      : 0;
+
     const avgDefect = filteredRecords.length > 0
       ? filteredRecords.reduce((acc, r) => acc + r.defectPercent, 0) / filteredRecords.length
       : 0;
@@ -117,6 +121,7 @@ export const MonthlyRecapView: React.FC<MonthlyRecapViewProps> = ({
       dailyAchievementRate,
       avgEfficiency,
       totalManpower,
+      avgProductivityPerOp,
       avgDefect
     };
   }, [filteredRecords]);
@@ -399,22 +404,28 @@ export const MonthlyRecapView: React.FC<MonthlyRecapViewProps> = ({
           </p>
         </div>
 
-        {/* KPI 3: Total Manpower (Operator) */}
+        {/* KPI 3: Total Operator Masuk (Manpower) & Produktivitas */}
         <div className="bg-white p-4.5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-red-600"></div>
+          <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-600"></div>
           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-            Total Operator (Manpower)
+            Operator Masuk & Produktivitas
           </span>
           <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900 font-mono">
-              {kpi.totalManpower} <span className="text-sm font-semibold text-slate-500">Orang</span>
-            </span>
-            <span className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
+            <div className="flex items-baseline space-x-2">
+              <span className="text-2xl font-black text-slate-900 font-mono">
+                {kpi.totalManpower} <span className="text-xs font-semibold text-slate-500">OP</span>
+              </span>
+              <span className="text-slate-300">|</span>
+              <span className="text-xl font-black text-indigo-700 font-mono">
+                {kpi.avgProductivityPerOp} <span className="text-xs font-semibold text-slate-500">pcs/op</span>
+              </span>
+            </div>
+            <span className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
               <Users className="w-4 h-4" />
             </span>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            Aktif di {filteredRecords.length} lini produksi PT Teratai Widjaja
+            Produktivitas dihitung: Output Aktual dibagi {kpi.totalManpower} operator masuk
           </p>
         </div>
 
@@ -648,16 +659,16 @@ export const MonthlyRecapView: React.FC<MonthlyRecapViewProps> = ({
                       </div>
 
                       <div className="bg-slate-50/70 p-2 rounded-lg border border-slate-100">
-                        <span className="text-[10px] text-slate-400 font-medium block">Operator / SMV</span>
-                        <div className="text-slate-800 font-semibold mt-0.5">
-                          {r.manpower} OP • {r.smvStandard} min
+                        <span className="text-[10px] text-slate-400 font-medium block">Operator Masuk & Prod</span>
+                        <div className="text-slate-800 font-bold mt-0.5">
+                          {r.manpower} OP • <span className="text-indigo-700">{r.manpower > 0 ? (actualDay / r.manpower).toFixed(1) : (r.productivityPcsPerOp || 0)} pcs/op</span>
                         </div>
                       </div>
 
                       <div className="bg-slate-50/70 p-2 rounded-lg border border-slate-100">
-                        <span className="text-[10px] text-slate-400 font-medium block">Defect Rate</span>
+                        <span className="text-[10px] text-slate-400 font-medium block">SMV / Defect Rate</span>
                         <div className={`font-semibold mt-0.5 ${isDefectHigh ? 'text-red-600 font-bold' : 'text-slate-700'}`}>
-                          {formatPercent(r.defectPercent)}
+                          SMV {r.smvStandard}m • {formatPercent(r.defectPercent)}
                         </div>
                       </div>
                     </div>
@@ -705,22 +716,23 @@ export const MonthlyRecapView: React.FC<MonthlyRecapViewProps> = ({
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-semibold">
                 <th className="px-3 py-3 text-center min-w-[65px]">Line</th>
                 <th className="px-3 py-3 min-w-[95px]">Tanggal</th>
-                <th className="px-3 py-3 min-w-[160px]">Model / Style</th>
+                <th className="px-3 py-3 min-w-[150px]">Model / Style</th>
                 <th className="px-3 py-3 text-right min-w-[95px]">Target/Hari</th>
                 <th className="px-3 py-3 text-right min-w-[95px]">Aktual/Hari</th>
                 <th className="px-3 py-3 text-right min-w-[85px]">Capaian (%)</th>
-                <th className="px-3 py-3 text-center min-w-[55px]">MP</th>
-                <th className="px-3 py-3 text-right min-w-[70px]">SMV</th>
+                <th className="px-3 py-3 text-center min-w-[65px]">Op Masuk</th>
+                <th className="px-3 py-3 text-right min-w-[95px]">Produktivitas</th>
+                <th className="px-3 py-3 text-right min-w-[65px]">SMV</th>
                 <th className="px-3 py-3 text-right min-w-[85px]">Efisiensi</th>
                 <th className="px-3 py-3 text-right min-w-[75px]">Defect</th>
-                <th className="px-3 py-3 min-w-[260px]">Kolom Analisis Operasional</th>
+                <th className="px-3 py-3 min-w-[240px]">Kolom Analisis Operasional</th>
                 <th className="px-3 py-3 text-center min-w-[75px]">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredRecords.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="py-14 text-center text-slate-400">
+                  <td colSpan={13} className="py-14 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center space-y-2 max-w-md mx-auto px-4">
                       <FileSpreadsheet className="w-8 h-8 text-slate-300" />
                       <p className="font-semibold text-slate-700">
@@ -739,6 +751,7 @@ export const MonthlyRecapView: React.FC<MonthlyRecapViewProps> = ({
                 const achRate = targetDay > 0 ? (actualDay / targetDay) * 100 : 0;
                 const isOptimal = r.efficiencyPercent >= 75;
                 const isDefectHigh = r.defectPercent > 2.0;
+                const prodPerOp = r.manpower > 0 ? Number((actualDay / r.manpower).toFixed(1)) : (r.productivityPcsPerOp || 0);
 
                 const statusStyles = {
                   optimal: {
@@ -785,8 +798,11 @@ export const MonthlyRecapView: React.FC<MonthlyRecapViewProps> = ({
                     }`}>
                       {formatPercent(achRate)}
                     </td>
-                    <td className="px-3 py-3 text-center font-mono text-slate-700">
-                      {r.manpower}
+                    <td className="px-3 py-3 text-center font-mono font-bold text-slate-800">
+                      {r.manpower} OP
+                    </td>
+                    <td className="px-3 py-3 text-right font-mono font-bold text-indigo-700">
+                      {prodPerOp} <span className="text-[10px] text-slate-400 font-normal">pcs/op</span>
                     </td>
                     <td className="px-3 py-3 text-right font-mono text-slate-700 font-semibold">
                       {r.smvStandard}
@@ -858,8 +874,11 @@ export const MonthlyRecapView: React.FC<MonthlyRecapViewProps> = ({
                 }`}>
                   {formatPercent(kpi.dailyAchievementRate)}
                 </td>
-                <td className="px-3 py-3 text-center font-mono">
-                  {kpi.totalManpower}
+                <td className="px-3 py-3 text-center font-mono text-slate-900">
+                  {kpi.totalManpower} OP
+                </td>
+                <td className="px-3 py-3 text-right font-mono text-indigo-700">
+                  {kpi.avgProductivityPerOp} <span className="text-[10px] text-slate-500 font-normal">pcs/op</span>
                 </td>
                 <td className="px-3 py-3 text-right text-slate-400">-</td>
                 <td className="px-3 py-3 text-right font-mono text-blue-700">

@@ -16,12 +16,14 @@ import {
   Calendar,
   User,
   Sliders,
-  Filter
+  Filter,
+  Wrench
 } from 'lucide-react';
-import { LineData, DashboardSummary, MonthlyProductivityRecord, LineIncident } from '../types';
+import { LineData, DashboardSummary, MonthlyProductivityRecord, LineIncident, RepairDefectRecord } from '../types';
 import { formatMonthYearIndonesian, formatIndonesianFullDate, getCurrentYearMonth, getPreviousMonth, getNextMonth } from '../utils/formatters';
 import { PdfReportTemplate } from './PdfReportTemplate';
 import { IncidentPdfTemplate } from './IncidentPdfTemplate';
+import { RepairDefectPdfTemplate } from './RepairDefectPdfTemplate';
 import { exportReportToPdf } from '../utils/pdfExport';
 
 interface PdfPreviewModalProps {
@@ -31,8 +33,10 @@ interface PdfPreviewModalProps {
   summary: DashboardSummary;
   monthlyRecap: MonthlyProductivityRecord[];
   incidents: LineIncident[];
-  initialReportType?: 'productivity' | 'incidents';
+  repairRecords?: RepairDefectRecord[];
+  initialReportType?: 'productivity' | 'incidents' | 'repair';
   initialSelectedMonth?: string;
+  initialSelectedDate?: string;
   canPrintPdf?: boolean;
 }
 
@@ -43,24 +47,28 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
   summary,
   monthlyRecap,
   incidents,
+  repairRecords = [],
   initialReportType = 'productivity',
   initialSelectedMonth,
+  initialSelectedDate,
   canPrintPdf = true
 }) => {
-  const [reportMode, setReportMode] = useState<'daily' | 'monthly' | 'incidents'>(
-    initialReportType === 'incidents' ? 'incidents' : 'daily'
+  const [reportMode, setReportMode] = useState<'daily' | 'monthly' | 'incidents' | 'repair'>(
+    initialReportType === 'incidents' ? 'incidents' : initialReportType === 'repair' ? 'repair' : 'daily'
   );
   
-  // Available months for reports
+  // Available months for reports (from monthly recap and repair records)
   const availableMonths = useMemo(() => {
-    const months = Array.from(new Set(monthlyRecap.map(r => r.date ? r.date.substring(0, 7) : null).filter(Boolean))) as string[];
+    const recapMonths = monthlyRecap.map(r => r.date ? r.date.substring(0, 7) : null).filter(Boolean) as string[];
+    const repairMonths = repairRecords.map(r => r.date ? r.date.substring(0, 7) : null).filter(Boolean) as string[];
+    const months = Array.from(new Set([...recapMonths, ...repairMonths]));
     months.sort().reverse();
     if (months.length > 0) return months;
     if (initialSelectedMonth) return [initialSelectedMonth];
     return [getCurrentYearMonth()];
-  }, [monthlyRecap, initialSelectedMonth]);
+  }, [monthlyRecap, repairRecords, initialSelectedMonth]);
 
-  // Selected Month (Bulan & Tahun) - used for both Daily and Monthly reports
+  // Selected Month (Bulan & Tahun) - used for Daily, Monthly, and Repair reports
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     return initialSelectedMonth || (availableMonths.length > 0 ? availableMonths[0] : getCurrentYearMonth());
   });
@@ -90,6 +98,31 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
   // Default selected date to 'all' (shows all daily records in the chosen month)
   const [selectedDate, setSelectedDate] = useState<string>('all');
 
+  // Repair records specifically within selected month
+  const repairMonthRecords = useMemo(() => {
+    if (!selectedMonth) return repairRecords;
+    return repairRecords.filter(r => !r.date || r.date.startsWith(selectedMonth));
+  }, [repairRecords, selectedMonth]);
+
+  // Available dates specifically for repair data
+  const repairMonthDates = useMemo(() => {
+    return Array.from(new Set(repairMonthRecords.map(r => r.date).filter(Boolean))).sort();
+  }, [repairMonthRecords]);
+
+  // Count of lines per date in repair
+  const repairDateCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    repairMonthRecords.forEach(r => {
+      if (r.date) {
+        map.set(r.date, (map.get(r.date) || 0) + 1);
+      }
+    });
+    return map;
+  }, [repairMonthRecords]);
+
+  // Selected date for repair report (default 'all' or specific date)
+  const [selectedRepairDate, setSelectedRepairDate] = useState<string>('all');
+
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [isExporting, setIsExporting] = useState(false);
   const [showSignOptions, setShowSignOptions] = useState(false);
@@ -98,9 +131,12 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
   useEffect(() => {
     if (initialSelectedMonth) {
       setSelectedMonth(initialSelectedMonth);
-      setSelectedDate('all');
+      if (!initialSelectedDate) {
+        setSelectedDate('all');
+        setSelectedRepairDate('all');
+      }
     }
-  }, [initialSelectedMonth, isOpen]);
+  }, [initialSelectedMonth, initialSelectedDate, isOpen]);
 
   // Manual Name inputs (Default empty string per user request: "untuk semua nama dihilangkan sehingga akan disi manual")
   const [supervisorName, setSupervisorName] = useState<string>('');
@@ -112,8 +148,22 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
     if (isOpen) {
       if (initialReportType === 'incidents') {
         setReportMode('incidents');
+      } else if (initialReportType === 'repair') {
+        setReportMode('repair');
+        if (initialSelectedDate) {
+          setSelectedRepairDate(initialSelectedDate);
+          const m = initialSelectedDate.substring(0, 7);
+          if (m) setSelectedMonth(m);
+        } else {
+          setSelectedRepairDate('all');
+        }
       } else {
         setReportMode('daily');
+        if (initialSelectedDate) {
+          setSelectedDate(initialSelectedDate);
+        } else {
+          setSelectedDate('all');
+        }
       }
       if (typeof window !== 'undefined' && window.innerWidth < 640) {
         setZoomLevel(45);
@@ -121,7 +171,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
         setZoomLevel(100);
       }
     }
-  }, [isOpen, initialReportType]);
+  }, [isOpen, initialReportType, initialSelectedDate]);
 
   if (!isOpen) return null;
 
@@ -148,12 +198,19 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
     }
     setIsExporting(true);
     try {
-      const elementId = reportMode === 'incidents' ? 'printable-incident-report' : 'printable-pdf-report';
+      const elementId = reportMode === 'incidents'
+        ? 'printable-incident-report'
+        : reportMode === 'repair'
+          ? 'printable-repair-report'
+          : 'printable-pdf-report';
+
       const filename = reportMode === 'incidents'
         ? `Laporan_Disposisi_Hambatan_Line_${Date.now()}.pdf`
-        : reportMode === 'daily'
-          ? `Laporan_Produksi_Harian_${selectedDate}_${Date.now()}.pdf`
-          : `Laporan_Rekapitulasi_Bulanan_${selectedMonth}_${Date.now()}.pdf`;
+        : reportMode === 'repair'
+          ? `Laporan_Rekapitulasi_Repair_Defect_${selectedRepairDate !== 'all' ? selectedRepairDate : selectedMonth}_${Date.now()}.pdf`
+          : reportMode === 'daily'
+            ? `Laporan_Produksi_Harian_${selectedDate}_${Date.now()}.pdf`
+            : `Laporan_Rekapitulasi_Bulanan_${selectedMonth}_${Date.now()}.pdf`;
 
       await exportReportToPdf(elementId, filename);
     } catch (err) {
@@ -184,12 +241,12 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-slate-400">
-              Laporan harian per tanggal, laporan bulanan, dan nama penandatangan manual
+              Laporan harian per tanggal, rekap repair sewing per hari, laporan bulanan, dan pengesahan tanda tangan
             </p>
           </div>
         </div>
 
-        {/* Center: Mode Switcher (Harian per tanggal vs Bulanan vs Disposisi) */}
+        {/* Center: Mode Switcher (Harian per tanggal vs Bulanan vs Rekap Repair vs Disposisi) */}
         <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs w-full sm:w-auto">
           <button
             onClick={() => setReportMode('daily')}
@@ -201,6 +258,19 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
           >
             <Calendar className="w-3.5 h-3.5" />
             <span>Laporan Harian</span>
+          </button>
+
+          <button
+            onClick={() => setReportMode('repair')}
+            className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+              reportMode === 'repair'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'text-slate-400 hover:text-white'
+            }`}
+            title="Laporan Rekapitulasi Repair & Defect Sewing per Hari"
+          >
+            <Wrench className="w-3.5 h-3.5 text-amber-200" />
+            <span>Rekap Repair Harian</span>
           </button>
 
           <button
@@ -308,12 +378,14 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
       {/* Filter / Customization Sub-bar */}
       <div className="bg-slate-900/95 border-b border-slate-800/80 px-4 sm:px-6 py-2.5 text-xs text-slate-300 flex flex-col gap-2.5 no-print">
         
-        {/* Tier 1: Bulan & Tahun Filter for Daily & Monthly Reports */}
-        {(reportMode === 'daily' || reportMode === 'monthly') ? (
+        {/* Tier 1: Bulan & Tahun Filter for Daily, Monthly & Repair Reports */}
+        {(reportMode === 'daily' || reportMode === 'monthly' || reportMode === 'repair') ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <span className="text-slate-400 font-bold flex items-center space-x-1.5 shrink-0">
-                <Calendar className={`w-3.5 h-3.5 ${reportMode === 'daily' ? 'text-blue-400' : 'text-emerald-400'}`} />
+                <Calendar className={`w-3.5 h-3.5 ${
+                  reportMode === 'repair' ? 'text-amber-400' : reportMode === 'daily' ? 'text-blue-400' : 'text-emerald-400'
+                }`} />
                 <span>Bulan & Tahun:</span>
               </span>
 
@@ -324,6 +396,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
                   onClick={() => {
                     setSelectedMonth(getPreviousMonth(selectedMonth));
                     setSelectedDate('all');
+                    setSelectedRepairDate('all');
                   }}
                   className="p-1 hover:bg-slate-700 rounded text-slate-300 hover:text-white transition-colors cursor-pointer"
                   title="Bulan Sebelumnya"
@@ -337,6 +410,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
                     if (e.target.value) {
                       setSelectedMonth(e.target.value);
                       setSelectedDate('all');
+                      setSelectedRepairDate('all');
                     }
                   }}
                   className="px-2 py-0.5 bg-transparent border-0 text-xs font-bold text-white focus:outline-none focus:ring-0 cursor-pointer"
@@ -347,6 +421,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
                   onClick={() => {
                     setSelectedMonth(getNextMonth(selectedMonth));
                     setSelectedDate('all');
+                    setSelectedRepairDate('all');
                   }}
                   className="p-1 hover:bg-slate-700 rounded text-slate-300 hover:text-white transition-colors cursor-pointer"
                   title="Bulan Berikutnya"
@@ -362,6 +437,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
                   onChange={(e) => {
                     setSelectedMonth(e.target.value);
                     setSelectedDate('all');
+                    setSelectedRepairDate('all');
                   }}
                   className="px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-lg text-xs font-bold text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                 >
@@ -376,14 +452,24 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
 
             <div className="flex items-center space-x-3">
               <span className={`text-[11px] px-2.5 py-1 rounded-lg font-medium shrink-0 ${
-                reportMode === 'daily' 
-                  ? 'text-blue-300 bg-blue-950/70 border border-blue-800' 
-                  : 'text-emerald-300 bg-emerald-950/70 border border-emerald-800'
+                reportMode === 'repair'
+                  ? 'text-amber-300 bg-amber-950/70 border border-amber-800'
+                  : reportMode === 'daily' 
+                    ? 'text-blue-300 bg-blue-950/70 border border-blue-800' 
+                    : 'text-emerald-300 bg-emerald-950/70 border border-emerald-800'
               }`}>
-                {reportMode === 'daily'
-                  ? `Rekap Periode: ${formatMonthYearIndonesian(selectedMonth)} • Total ${monthRecords.length} Data Lini`
-                  : `Laporan Rekapitulasi Bulanan: ${formatMonthYearIndonesian(selectedMonth)} • Total ${monthRecords.length} Data Lini`}
+                {reportMode === 'repair'
+                  ? `Rekap Kualitas & Repair: ${formatMonthYearIndonesian(selectedMonth)} • Total ${repairMonthRecords.length} Data Lini`
+                  : reportMode === 'daily'
+                    ? `Rekap Periode: ${formatMonthYearIndonesian(selectedMonth)} • Total ${monthRecords.length} Data Lini`
+                    : `Laporan Rekapitulasi Bulanan: ${formatMonthYearIndonesian(selectedMonth)} • Total ${monthRecords.length} Data Lini`}
               </span>
+
+              {reportMode === 'repair' && repairMonthRecords.some(r => r.repairPercent >= 10) && (
+                <span className="hidden sm:inline-block px-2 py-0.5 rounded bg-red-950 border border-red-800 text-red-300 font-bold font-mono text-[10px] animate-pulse">
+                  🚨 {repairMonthRecords.filter(r => r.repairPercent >= 10).length} Lini Kritis (≥10%)
+                </span>
+              )}
             </div>
           </div>
         ) : (
@@ -398,7 +484,110 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
           </div>
         )}
 
-        {/* Tier 2: Dedicated "Pilihan Per Hari Data" for Laporan Harian */}
+        {/* Tier 2: Dedicated "Pilihan Per Hari Data Repair" for Laporan Repair */}
+        {reportMode === 'repair' && (
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
+            <div className="flex items-center space-x-1.5 shrink-0">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+              <span className="text-xs font-bold text-slate-200">Pilihan Tanggal Data Repair:</span>
+            </div>
+
+            {/* Quick buttons per day */}
+            <div className="flex items-center flex-wrap gap-1.5">
+              {/* Button: Semua Hari */}
+              <button
+                type="button"
+                onClick={() => setSelectedRepairDate('all')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                  selectedRepairDate === 'all'
+                    ? 'bg-amber-600 text-white shadow ring-2 ring-amber-400/60'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                }`}
+                title="Tampilkan rekap repair semua tanggal dalam bulan ini"
+              >
+                <span>Semua Hari</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                  selectedRepairDate === 'all' ? 'bg-amber-700 text-amber-100' : 'bg-slate-700 text-slate-400'
+                }`}>
+                  {repairMonthRecords.length}
+                </span>
+              </button>
+
+              {/* Day Pills for each recorded date in this month */}
+              {repairMonthDates.map(d => {
+                const dayNum = d.split('-')[2] || d;
+                const count = repairDateCounts.get(d) || 0;
+                const isSelected = selectedRepairDate === d;
+                const hasCritical = repairMonthRecords.filter(r => r.date === d && r.repairPercent >= 10.0).length > 0;
+
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setSelectedRepairDate(d)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                      isSelected
+                        ? 'bg-amber-600 text-white font-bold shadow ring-2 ring-amber-400/80'
+                        : hasCritical
+                          ? 'bg-red-950/70 hover:bg-red-900/80 text-red-200 border border-red-700'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                    }`}
+                    title={`Pilih Laporan Repair Tanggal ${formatIndonesianFullDate(d)} (${count} lini sewing)${hasCritical ? ' • Ada Lini Kritis ≥ 10%' : ''}`}
+                  >
+                    <span>Tgl {dayNum}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                      isSelected
+                        ? 'bg-amber-700 text-amber-100 font-bold'
+                        : hasCritical
+                          ? 'bg-red-800 text-white font-bold'
+                          : 'bg-slate-700 text-slate-400'
+                    }`}>
+                      {count} lini
+                    </span>
+                  </button>
+                );
+              })}
+
+              {/* Date picker input if user wants to select any date manually */}
+              <div className="flex items-center space-x-1 pl-1.5 border-l border-slate-700">
+                <span className="text-[11px] text-slate-400 hidden sm:inline">Pilih Kalender:</span>
+                <input
+                  type="date"
+                  value={selectedRepairDate === 'all' ? '' : selectedRepairDate}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setSelectedRepairDate(e.target.value);
+                      const m = e.target.value.substring(0, 7);
+                      if (m !== selectedMonth) {
+                        setSelectedMonth(m);
+                      }
+                    } else {
+                      setSelectedRepairDate('all');
+                    }
+                  }}
+                  className="px-2 py-1 bg-slate-800 border border-slate-700 rounded-lg text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
+                  title="Pilih tanggal data repair spesifik dari kalender"
+                />
+              </div>
+            </div>
+
+            {/* Active Date Indicator info */}
+            <div className="ml-auto text-[11px] text-slate-400 flex items-center space-x-1">
+              {selectedRepairDate === 'all' ? (
+                <span className="text-amber-300 font-medium">
+                  Menampilkan rekap repair semua tanggal ({repairMonthRecords.length} lini)
+                </span>
+              ) : (
+                <span className="text-emerald-300 font-medium flex items-center space-x-1">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 inline" />
+                  <span>Aktif: <strong>{formatIndonesianFullDate(selectedRepairDate)}</strong> ({repairMonthRecords.filter(r => r.date === selectedRepairDate).length} Lini)</span>
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Tier 2: Dedicated "Pilihan Per Hari Data" for Laporan Harian Produksi */}
         {reportMode === 'daily' && (
           <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
             <div className="flex items-center space-x-1.5 shrink-0">
@@ -578,6 +767,17 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
                 fmName={fmName}
               />
             </div>
+          ) : reportMode === 'repair' ? (
+            <div className="bg-white rounded-xl shadow-2xl overflow-hidden border border-slate-300 w-full max-w-[1040px]">
+              <RepairDefectPdfTemplate
+                records={repairRecords}
+                selectedDate={selectedRepairDate}
+                selectedMonth={selectedMonth}
+                supervisorName={supervisorName}
+                peName={peName}
+                fmName={fmName}
+              />
+            </div>
           ) : (
             <div className="bg-white rounded-xl shadow-2xl overflow-hidden border border-slate-300 w-full max-w-[1040px]">
               <PdfReportTemplate
@@ -600,3 +800,4 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
     </div>
   );
 };
+

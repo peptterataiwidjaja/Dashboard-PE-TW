@@ -237,12 +237,24 @@ export const Navbar: React.FC<NavbarProps> = ({
               id="btn-export-pdf"
               onClick={onExportPdf}
               disabled={isExporting}
-              className="inline-flex items-center space-x-1 sm:space-x-1.5 px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-sm shadow-blue-200 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
-              title="Buka Pratinjau Dokumen PDF Sebelum Dicetak atau Diunduh"
+              className={`inline-flex items-center space-x-1 sm:space-x-1.5 px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer ${
+                activeTab === 'repair-defect'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200'
+              }`}
+              title={
+                activeTab === 'repair-defect'
+                  ? 'Buka Pratinjau & Cetak Laporan Rekapitulasi Repair Harian'
+                  : 'Buka Pratinjau Dokumen PDF Sebelum Dicetak atau Diunduh'
+              }
             >
               <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">Preview PDF</span>
-              <span className="sm:hidden">PDF</span>
+              <span className="hidden sm:inline">
+                {activeTab === 'repair-defect' ? 'Cetak Rekap Repair' : 'Preview PDF'}
+              </span>
+              <span className="sm:hidden">
+                {activeTab === 'repair-defect' ? 'Repair' : 'PDF'}
+              </span>
             </button>
           </div>
         </div>

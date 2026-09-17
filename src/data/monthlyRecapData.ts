@@ -26,25 +26,31 @@ export function generateSmartAnalysis(
   actualDaily: number,
   targetDaily: number,
   efficiency: number,
-  defectRate: number
+  defectRate: number,
+  manpower?: number,
+  productivityPerOp?: number
 ): { status: 'optimal' | 'warning' | 'critical'; text: string } {
   const diff = actualDaily - targetDaily;
   const percentAchieved = targetDaily > 0 ? (actualDaily / targetDaily) * 100 : 0;
+  const mp = manpower && manpower > 0 ? manpower : 36;
+  const prod = productivityPerOp !== undefined 
+    ? productivityPerOp 
+    : (mp > 0 ? Number((actualDaily / mp).toFixed(1)) : 0);
 
   if (percentAchieved >= 98 && efficiency >= 73 && defectRate <= 2.0) {
     return {
       status: 'optimal',
-      text: `Performa optimal (${percentAchieved.toFixed(1)}%). Output harian ${diff >= 0 ? `+${diff}` : `${diff}`} pcs. Efisiensi ${efficiency.toFixed(1)}% & reject aman ${defectRate}%.`
+      text: `Performa optimal (${percentAchieved.toFixed(1)}%). Produktivitas ${prod} pcs/operator (${mp} operator masuk). Efisiensi ${efficiency.toFixed(1)}% & reject aman ${defectRate}%. Lini berjalan lancar.`
     };
   } else if (percentAchieved < 85 || efficiency < 65 || defectRate > 2.8) {
     return {
       status: 'critical',
-      text: `Kritis: Capaian harian ${percentAchieved.toFixed(1)}% (Defisit ${diff} pcs). Efisiensi rendah ${efficiency.toFixed(1)}% / Defect ${defectRate}%. Perlu audit bottleneck & re-balancing operator.`
+      text: `Kritis: Capaian ${percentAchieved.toFixed(1)}% (Defisit ${diff} pcs). Produktivitas ${prod} pcs/operator (${mp} operator masuk). Efisiensi rendah ${efficiency.toFixed(1)}% / Defect ${defectRate}%. Perlu audit bottleneck & penataan ulang beban operator.`
     };
   } else {
     return {
       status: 'warning',
-      text: `Perlu perhatian: Capaian harian ${percentAchieved.toFixed(1)}% (Defisit ${diff} pcs). Periksa supply potongan & sinkronisasi stasiun kerja.`
+      text: `Perlu perhatian: Capaian ${percentAchieved.toFixed(1)}% (Defisit ${diff} pcs). Produktivitas ${prod} pcs/operator (${mp} operator masuk). Efisiensi ${efficiency.toFixed(1)}%. Periksa supply stasiun kerja.`
     };
   }
 }
