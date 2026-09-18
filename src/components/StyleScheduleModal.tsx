@@ -4,19 +4,20 @@ import {
   Save, 
   Calendar, 
   Clock, 
-  Layers, 
   AlertTriangle, 
   CheckCircle2, 
   Info,
   Database,
-  ArrowRight,
-  TrendingDown,
-  Sparkles,
   Calculator,
-  ShieldCheck
+  Layers
 } from 'lucide-react';
 import { StyleScheduleRecord, BankDataModel } from '../types';
-import { calculateScheduleMetrics, addWorkingDays, formatDateYMD, calculateAutoScheduleFromSMV } from '../utils/scheduleCalculations';
+import { 
+  formatDateYMD, 
+  calculateAutoScheduleFromSMV, 
+  calculateShiftBreakdown, 
+  calculateScheduleMetrics 
+} from '../utils/scheduleCalculations';
 
 interface StyleScheduleModalProps {
   isOpen: boolean;
@@ -40,38 +41,47 @@ export const StyleScheduleModal: React.FC<StyleScheduleModalProps> = ({
   const [buyer, setBuyer] = useState<string>('');
   const [modelId, setModelId] = useState<string>('');
   const [orderQty, setOrderQty] = useState<number>(5000);
-  const [dailyTargetQty, setDailyTargetQty] = useState<number>(500);
-  const [actualQty, setActualQty] = useState<number>(0);
-  const [startDate, setStartDate] = useState<string>(formatDateYMD(new Date()));
-  const [plannedEndDate, setPlannedEndDate] = useState<string>(addWorkingDays(formatDateYMD(new Date()), 10));
-  const [standardWorkingHours, setStandardWorkingHours] = useState<number>(8);
-  const [manpower, setManpower] = useState<number>(36);
   const [smv, setSmv] = useState<number>(14.5);
-  const [otHoursPerDay, setOtHoursPerDay] = useState<number>(2);
+  const [manpower, setManpower] = useState<number>(36);
+  const [startDate, setStartDate] = useState<string>(() => {
+    const today = new Date();
+    if (today.getDay() === 0) today.setDate(today.getDate() + 1); // Loncat ke Senin
+    return formatDateYMD(today);
+  });
   const [notes, setNotes] = useState<string>('');
-  const [isAutoCalculated, setIsAutoCalculated] = useState<boolean>(true);
 
-  // Otomatis hitung target harian dengan buffer 10% dan tanggal selesai dari SMV
+  // Auto kalkulasi jadwal & slot jam kerja normal
   const autoSchedule = useMemo(() => {
     return calculateAutoScheduleFromSMV({
       orderQty,
       smv,
       manpower,
-      startDate,
-      bufferPercent: 10,
-      fiveDayWeek: false
+      startDate
     });
   }, [orderQty, smv, manpower, startDate]);
 
-  // Sinkronisasi otomatis saat nilai SMV, Order, Manpower, atau StartDate berubah jika auto-calc aktif
-  useEffect(() => {
-    if (isAutoCalculated && autoSchedule) {
-      setDailyTargetQty(autoSchedule.targetDailyMonFri);
-      setPlannedEndDate(autoSchedule.plannedEndDate);
-    }
-  }, [autoSchedule, isAutoCalculated]);
+  const shifts = useMemo(() => {
+    return calculateShiftBreakdown(smv, manpower);
+  }, [smv, manpower]);
 
-  // Sinkronisasi saat form dibuka atau initialData berubah
+  // Cek apakah tanggal mulai yang dipilih jatuh di hari Minggu
+  const isSelectedDateSunday = useMemo(() => {
+    const d = new Date(startDate);
+    return d.getDay() === 0;
+  }, [startDate]);
+
+  // Handler perubahan tanggal mulai (jika Minggu, otomatis loncat ke Senin)
+  const handleStartDateChange = (newDateStr: string) => {
+    const d = new Date(newDateStr);
+    if (d.getDay() === 0) {
+      d.setDate(d.getDate() + 1); // Loncat ke hari Senin!
+      setStartDate(formatDateYMD(d));
+    } else {
+      setStartDate(newDateStr);
+    }
+  };
+
+  // Sinkronisasi form saat modal dibuka atau saat initialData berganti
   useEffect(() => {
     if (initialData) {
       setLineId(initialData.lineId);
@@ -79,97 +89,49 @@ export const StyleScheduleModal: React.FC<StyleScheduleModalProps> = ({
       setBuyer(initialData.buyer);
       setModelId(initialData.modelId || '');
       setOrderQty(initialData.orderQty);
-      setDailyTargetQty(initialData.dailyTargetQty);
-      setActualQty(initialData.actualQty);
-      setStartDate(initialData.startDate);
-      setPlannedEndDate(initialData.plannedEndDate);
-      setStandardWorkingHours(initialData.standardWorkingHours || 8);
-      setManpower(initialData.manpower || 36);
       setSmv(initialData.smv || 14.5);
-      setOtHoursPerDay(initialData.otHoursPerDay || 2);
+      setManpower(initialData.manpower || 36);
+      setStartDate(initialData.startDate);
       setNotes(initialData.notes || '');
-      setIsAutoCalculated(false); // Mode edit mempertahankan nilai tersimpan
     } else {
       setLineId(1);
       setStyleName('');
       setBuyer('');
       setModelId('');
       setOrderQty(5000);
-      setActualQty(0);
-      const today = formatDateYMD(new Date());
-      setStartDate(today);
-      setStandardWorkingHours(8);
-      setManpower(36);
       setSmv(14.5);
-      setOtHoursPerDay(2);
+      setManpower(36);
+      const today = new Date();
+      if (today.getDay() === 0) today.setDate(today.getDate() + 1);
+      setStartDate(formatDateYMD(today));
       setNotes('');
-      setIsAutoCalculated(true);
-      
-      // Auto calculation initial default
-      const initCalc = calculateAutoScheduleFromSMV({
-        orderQty: 5000,
-        smv: 14.5,
-        manpower: 36,
-        startDate: today,
-        bufferPercent: 10,
-        fiveDayWeek: false
-      });
-      setDailyTargetQty(initCalc.targetDailyMonFri);
-      setPlannedEndDate(initCalc.plannedEndDate);
     }
   }, [initialData, isOpen]);
 
-  // Paksa hitung ulang otomatis dari SMV
-  const handleRecalculateFromSMV = () => {
-    setIsAutoCalculated(true);
-    if (autoSchedule) {
-      setDailyTargetQty(autoSchedule.targetDailyMonFri);
-      setPlannedEndDate(autoSchedule.plannedEndDate);
-    }
-  };
-
-  // Pilih dari Bank Data Model
+  // Pilih cepat dari Bank Data
   const handleSelectBankModel = (selectedId: string) => {
     setModelId(selectedId);
     if (!selectedId) return;
-    const model = bankDataModels.find(m => m.id === selectedId);
-    if (model) {
-      setStyleName(model.modelCode);
-      setBuyer(model.buyer);
-      setSmv(model.smvStandard || 14.5);
-      setManpower(model.manpowerStandard || 36);
-      if (model.targetTotalPcs) {
-        setOrderQty(model.targetTotalPcs);
-      }
-      setIsAutoCalculated(true);
+    const found = bankDataModels.find(m => m.id === selectedId);
+    if (found) {
+      setStyleName(found.modelCode);
+      setBuyer(found.buyer);
+      if (found.smvStandard) setSmv(found.smvStandard);
+      if (found.manpowerStandard) setManpower(found.manpowerStandard);
+      if (found.targetTotalPcs) setOrderQty(found.targetTotalPcs);
     }
   };
 
   if (!isOpen) return null;
 
-  // Hitung metrik live
-  const preview = calculateScheduleMetrics({
-    id: initialData?.id || 'temp',
-    lineId,
-    lineName: `Line ${lineId}`,
-    styleName: styleName || 'Style Baru',
-    buyer: buyer || 'Buyer',
-    orderQty,
-    dailyTargetQty,
-    actualQty,
-    startDate,
-    plannedEndDate,
-    standardWorkingHours,
-    manpower,
-    smv,
-    otHoursPerDay,
-    notes
-  });
+  // Analisis potensi tumpang tindih di Line yang dipilih
+  const lineExisting = existingSchedules.filter(
+    s => s.lineId === lineId && (!initialData || s.id !== initialData.id) && s.remainingQty > 0
+  );
 
-  // Deteksi live apakah pada Line yang dipilih ada potensi tumpang tindih
-  const lineExisting = existingSchedules.filter(s => s.lineId === lineId && (!initialData || s.id !== initialData.id));
-  const potentialOverlapWithPrev = lineExisting.find(s => s.needsOT && s.otEndDate >= startDate && s.startDate <= startDate);
-  const potentialOverlapWithNext = lineExisting.find(s => s.startDate <= preview.otEndDate && s.startDate > startDate && preview.needsOT);
+  const overlapConflicts = lineExisting.filter(s => {
+    return s.startDate <= autoSchedule.plannedEndDate && s.plannedEndDate >= startDate;
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,14 +148,14 @@ export const StyleScheduleModal: React.FC<StyleScheduleModalProps> = ({
       buyer: buyer.trim() || 'Umum',
       modelId: modelId || undefined,
       orderQty: Number(orderQty) || 0,
-      dailyTargetQty: Number(dailyTargetQty) || 500,
-      actualQty: Number(actualQty) || 0,
+      dailyTargetQty: autoSchedule.targetDailyMonFri,
+      actualQty: initialData ? initialData.actualQty : 0,
       startDate,
-      plannedEndDate,
-      standardWorkingHours: Number(standardWorkingHours) || 8,
+      plannedEndDate: autoSchedule.plannedEndDate,
+      standardWorkingHours: 8,
       manpower: Number(manpower) || 36,
       smv: Number(smv) || 14.5,
-      otHoursPerDay: Number(otHoursPerDay) || 2,
+      otHoursPerDay: 0,
       notes: notes.trim()
     });
 
@@ -202,21 +164,21 @@ export const StyleScheduleModal: React.FC<StyleScheduleModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-white rounded-2xl max-w-3xl w-full border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-6">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 font-['Plus_Jakarta_Sans',sans-serif]">
+      <div className="bg-white rounded-2xl max-w-2xl w-full border border-slate-200 shadow-xl overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-150">
         
-        {/* Header Modal */}
-        <div className="px-6 py-4 bg-linear-to-r from-blue-800 to-[#1a3478] text-white flex items-center justify-between">
+        {/* Header Modal - Simple & Elegan */}
+        <div className="px-6 py-4 bg-[#1a3478] text-white flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded-lg bg-white/15 backdrop-blur-xs flex items-center justify-center text-white">
+            <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-white">
               <Calendar className="w-4 h-4" />
             </div>
             <div>
               <h3 className="text-base font-bold tracking-tight">
-                {initialData ? 'Ubah Alokasi Jadwal Style & Lembur (OT)' : 'Input Bank Data Manual Style Sewing & Jadwal OT'}
+                {initialData ? 'Ubah Jadwal Style Sewing' : 'Input Jadwal Style Sewing Baru'}
               </h3>
-              <p className="text-xs text-blue-100">
-                Alokasikan style ke Line produksi, hitung sisa target & estimasi jam lembur
+              <p className="text-xs text-blue-200">
+                Kapasitas dihitung otomatis dari Total Target, SMV & Manpower
               </p>
             </div>
           </div>
@@ -228,427 +190,252 @@ export const StyleScheduleModal: React.FC<StyleScheduleModalProps> = ({
           </button>
         </div>
 
-        {/* Body Form */}
-        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 max-h-[82vh] overflow-y-auto">
           
-          {/* Auto Calculation Banner & Feature Highlight */}
-          <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-emerald-50 border border-blue-200 rounded-xl p-4 shadow-xs">
-            <div className="flex items-start space-x-3">
-              <div className="p-2 bg-blue-600 text-white rounded-lg shrink-0 mt-0.5 shadow-xs">
-                <Calculator className="w-5 h-5" />
-              </div>
-              <div className="space-y-1 text-xs">
-                <div className="flex items-center space-x-2">
-                  <span className="font-extrabold text-blue-950 uppercase tracking-wide">
-                    Sistem Perhitungan Otomatis dari Target SMV & Buffer 10%
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold border border-blue-200">
-                    Senin-Jumat: 8 Jam • Sabtu: 5 Jam
-                  </span>
-                </div>
-                <p className="text-slate-600 leading-relaxed text-[11px]">
-                  Cukup masukkan <strong>Target SMV</strong> dan <strong>Qty Order</strong>. Sistem secara otomatis menghitung target harian 
-                  dengan penambahan <strong>buffer 10%</strong> dari target awal, serta menghitung tanggal selesai secara presisi 
-                  lalu langsung di-plot ke dalam kalender alokasi style sewing.
-                </p>
-              </div>
-            </div>
-
-            {/* Live Calculation Output Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-3 pt-3 border-t border-blue-200/60">
-              <div className="bg-white/80 rounded-lg p-2 border border-blue-100">
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">SMV Target</span>
-                <span className="text-sm font-black text-blue-900 font-mono">{smv || 14.5} <span className="text-[10px] text-slate-400 font-normal">menit</span></span>
-                <span className="text-[9px] text-slate-500 block">+10% Buffer: {autoSchedule.effectiveSMV} mnt</span>
-              </div>
-
-              <div className="bg-white/80 rounded-lg p-2 border border-blue-100">
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">Target Sen - Jum (8 Jam)</span>
-                <span className="text-sm font-black text-indigo-900 font-mono">
-                  {autoSchedule.targetDailyMonFri} <span className="text-[10px] text-slate-400 font-normal">pcs/hr</span>
-                </span>
-                <span className="text-[9px] text-slate-500 block">Awal Murni: {autoSchedule.baseDailyMonFri} pcs</span>
-              </div>
-
-              <div className="bg-white/80 rounded-lg p-2 border border-blue-100">
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">Target Sabtu (5 Jam)</span>
-                <span className="text-sm font-black text-indigo-900 font-mono">
-                  {autoSchedule.targetDailySaturday} <span className="text-[10px] text-slate-400 font-normal">pcs/hr</span>
-                </span>
-                <span className="text-[9px] text-slate-500 block">Awal Murni: {autoSchedule.baseDailySaturday} pcs</span>
-              </div>
-
-              <div className="bg-white/80 rounded-lg p-2 border border-emerald-200 bg-emerald-50/50">
-                <span className="text-[10px] uppercase font-bold text-emerald-700 block">Plot Tanggal Selesai</span>
-                <span className="text-sm font-black text-emerald-900 font-mono">
-                  {autoSchedule.plannedEndDate}
-                </span>
-                <span className="text-[9px] text-emerald-600 block">{autoSchedule.totalWorkingDays} Hari Kerja</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Bank Data Template Selector */}
-          {bankDataModels.length > 0 && (
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-              <div className="flex items-center space-x-2">
-                <Database className="w-4 h-4 text-slate-700 shrink-0" />
-                <div>
-                  <span className="text-xs font-bold text-slate-800">Atau Pilih dari Bank Data Model:</span>
-                  <p className="text-[11px] text-slate-500">Otomatis mengisi Buyer & Waktu SMV Standar</p>
-                </div>
-              </div>
-              <select
-                value={modelId}
-                onChange={(e) => handleSelectBankModel(e.target.value)}
-                className="text-xs font-semibold bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
-              >
-                <option value="">-- Pilih Model dari Bank Data --</option>
-                {bankDataModels.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.modelCode} ({m.buyer}) - SMV {m.smvStandard} mnt
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Grid Input Utama */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            
-            {/* Kategori Line */}
+          {/* Identitas Style & Line */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Kategori Line Produksi *
+                Kategori Line
               </label>
               <select
                 value={lineId}
                 onChange={(e) => setLineId(Number(e.target.value))}
-                className="w-full text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                required
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
               >
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
-                  <option key={num} value={num}>Line {num} (Sewing)</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                  <option key={num} value={num}>Line {num}</option>
                 ))}
               </select>
             </div>
 
-            {/* Nama Style */}
             <div className="sm:col-span-2">
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Nama Style / Garment Model *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-slate-700">
+                  Nama Model / Style <span className="text-red-500">*</span>
+                </label>
+                {bankDataModels.length > 0 && (
+                  <div className="flex items-center space-x-1 text-[11px] text-blue-700">
+                    <Database className="w-3 h-3" />
+                    <select
+                      value={modelId}
+                      onChange={(e) => handleSelectBankModel(e.target.value)}
+                      className="bg-transparent text-blue-700 font-bold hover:underline focus:outline-hidden cursor-pointer"
+                    >
+                      <option value="">Pilih Bank Data</option>
+                      {bankDataModels.map(m => (
+                        <option key={m.id} value={m.id}>{m.modelCode} ({m.buyer})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
               <input
                 type="text"
                 value={styleName}
                 onChange={(e) => setStyleName(e.target.value)}
-                placeholder="Contoh: DELAMI H067 / CHINO PANTS"
-                className="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                placeholder="Contoh: DELAMI H067"
                 required
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
               />
             </div>
+          </div>
 
-            {/* Buyer / Customer */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Buyer / Customer
+                Buyer / Merk
               </label>
               <input
                 type="text"
                 value={buyer}
                 onChange={(e) => setBuyer(e.target.value)}
-                placeholder="Contoh: DELAMI, ZARA, UNIQLO"
-                className="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                placeholder="Contoh: DELAMI / UNIQLO"
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
               />
             </div>
 
-            {/* SMV Target - PROMINENT INPUT */}
-            <div className="bg-blue-50/50 p-2 rounded-xl border border-blue-200/80">
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-black text-blue-900">
-                  Target SMV (Menit) *
-                </label>
-                <span className="text-[10px] text-blue-700 font-bold bg-blue-100 px-1.5 py-0.2 rounded">
-                  Kunci Hitung
-                </span>
-              </div>
-              <input
-                type="number"
-                step="0.01"
-                min="0.1"
-                value={smv}
-                onChange={(e) => {
-                  setSmv(Number(e.target.value));
-                  setIsAutoCalculated(true);
-                }}
-                className="w-full text-xs font-black bg-white border border-blue-400 rounded-lg px-3 py-2 text-blue-950 focus:ring-2 focus:ring-blue-600"
-                required
-              />
-            </div>
-
-            {/* Total Target Order / PO (Pcs) */}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Total Target Order (Qty Order) *
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={orderQty}
-                onChange={(e) => {
-                  setOrderQty(Number(e.target.value));
-                  setIsAutoCalculated(true);
-                }}
-                className="w-full text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                required
-              />
-            </div>
-
-            {/* Start Date */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Start Date (Mulai Sewing) *
+                Tanggal Mulai Produksi
               </label>
               <input
                 type="date"
                 value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value);
-                  setIsAutoCalculated(true);
-                }}
-                className="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                required
+                onChange={(e) => handleStartDateChange(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
               />
-              {/* Indikator Aturan Hari Kerja */}
-              {(() => {
-                if (!startDate) return null;
-                const d = new Date(startDate + 'T00:00:00');
-                const day = d.getDay();
-                if (day === 0) {
-                  return (
-                    <div className="mt-1 text-[11px] font-bold text-red-700 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg flex items-center space-x-1.5 animate-in fade-in">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-600" />
-                      <span>⚠️ Hari Minggu: Tidak ada jadwal sewing (Pabrik Libur). Alokasi otomatis efektif mulai hari Senin.</span>
-                    </div>
-                  );
-                } else if (day === 6) {
-                  return (
-                    <div className="mt-1 text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg flex items-center space-x-1.5 animate-in fade-in">
-                      <Info className="w-3.5 h-3.5 shrink-0 text-amber-600" />
-                      <span>ℹ️ Hari Sabtu: Hanya berlaku untuk 5 jam kerja saja (300 menit).</span>
-                    </div>
-                  );
-                } else {
-                  return (
-                    <div className="mt-1 text-[11px] font-medium text-slate-500 flex items-center space-x-1">
-                      <span>✓ Senin - Jumat: 8 jam kerja standar</span>
-                    </div>
-                  );
-                }
-              })()}
+              {isSelectedDateSunday && (
+                <p className="text-[10.5px] text-amber-600 font-semibold mt-1">
+                  Hari Minggu libur pabrik → otomatis loncat ke hari Senin.
+                </p>
+              )}
             </div>
-
-            {/* Target Output per Hari (Pcs/Hari) */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-700">
-                  Target per Hari (+10% Buffer) *
-                </label>
-                {isAutoCalculated && (
-                  <span className="text-[10px] text-emerald-600 font-bold flex items-center space-x-0.5">
-                    <Sparkles className="w-3 h-3" />
-                    <span>Otomatis</span>
-                  </span>
-                )}
-              </div>
-              <input
-                type="number"
-                min="1"
-                value={dailyTargetQty}
-                onChange={(e) => {
-                  setDailyTargetQty(Number(e.target.value));
-                  setIsAutoCalculated(false);
-                }}
-                className="w-full text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                required
-              />
-            </div>
-
-            {/* Planned End Date */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-700">
-                  Planned End Date *
-                </label>
-                <button
-                  type="button"
-                  onClick={handleRecalculateFromSMV}
-                  className="text-[10px] text-blue-600 hover:text-blue-700 font-bold underline flex items-center space-x-0.5 cursor-pointer"
-                  title="Hitung ulang otomatis dari SMV dan buffer 10%"
-                >
-                  <Sparkles className="w-3 h-3 text-blue-600" />
-                  <span>Hitung Ulang</span>
-                </button>
-              </div>
-              <input
-                type="date"
-                value={plannedEndDate}
-                onChange={(e) => {
-                  setPlannedEndDate(e.target.value);
-                  setIsAutoCalculated(false);
-                }}
-                className="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                required
-              />
-            </div>
-
-            {/* Aktual Output Saat Ini (Pcs) */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Aktual Output Saat Ini (Pcs)
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={actualQty}
-                onChange={(e) => setActualQty(Number(e.target.value))}
-                className="w-full text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-              />
-            </div>
-
-            {/* Manpower & Jam Reguler */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Manpower Operator Sewing
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={manpower}
-                onChange={(e) => {
-                  setManpower(Number(e.target.value));
-                  setIsAutoCalculated(true);
-                }}
-                className="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-              />
-            </div>
-
-            {/* Standar Kapasitas Lembur per Hari */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Kapasitas Jam Lembur (OT Jam/Hari)
-              </label>
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                max="5"
-                value={otHoursPerDay}
-                onChange={(e) => setOtHoursPerDay(Number(e.target.value))}
-                className="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-              />
-            </div>
-
           </div>
 
-          {/* LIVE METRIC PREVIEW: SISA QTY & PERHITUNGAN OT */}
-          <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
-                <Clock className="w-3.5 h-3.5 text-blue-700" />
-                <span>Kalkulasi Otomatis Sisa Target & Kebutuhan Lembur (OT)</span>
+          {/* 3 Parameter Utama: Total Target, SMV, Manpower */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+            <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center space-x-1.5">
+              <Calculator className="w-3.5 h-3.5 text-blue-700" />
+              <span>Parameter Input Utama</span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Total Target (pcs)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={orderQty}
+                  onChange={(e) => setOrderQty(Math.max(1, Number(e.target.value)))}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-extrabold text-blue-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  SMV (menit)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min={0.1}
+                  value={smv}
+                  onChange={(e) => setSmv(Math.max(0.1, Number(e.target.value)))}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-extrabold text-blue-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Manpower (orang)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={manpower}
+                  onChange={(e) => setManpower(Math.max(1, Number(e.target.value)))}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-extrabold text-blue-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Hasil Perhitungan Otomatis: Ringkasan Kapasitas Harian */}
+          <div className="border border-blue-200 bg-blue-50/50 rounded-xl p-3.5 space-y-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-extrabold text-[#1a3478]">
+                Hasil Perhitungan Otomatis:
               </span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                preview.remainingQty > 0 
-                  ? 'bg-amber-100 text-amber-800 border border-amber-300' 
-                  : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-              }`}>
-                {preview.remainingQty > 0 ? `Perlu Lembur (${preview.otDaysNeeded} Hari)` : 'Target Selesai Tepat Waktu'}
+              <span className="text-[11px] font-bold text-slate-500">
+                Selesai: <strong className="text-slate-800">{autoSchedule.plannedEndDate}</strong> ({autoSchedule.totalWorkingDays} hari kerja)
               </span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div className="bg-white p-3 rounded-lg border border-slate-200">
-                <span className="text-[11px] text-slate-500">Sisa Qty (Backlog)</span>
-                <p className={`text-base font-black ${preview.remainingQty > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                  {preview.remainingQty.toLocaleString()} <span className="text-[11px] font-normal text-slate-500">pcs</span>
-                </p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-white p-2.5 rounded-lg border border-blue-100 shadow-2xs">
+                <span className="text-[10.5px] font-semibold text-slate-500 block">Senin - Jumat (8 Jam Kerja)</span>
+                <span className="text-base font-black text-blue-900">
+                  {autoSchedule.targetDailyMonFri.toLocaleString()} pcs
+                </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">07.30 - 18.00 (Normal 8 jam)</span>
               </div>
 
-              <div className="bg-white p-3 rounded-lg border border-slate-200">
-                <span className="text-[11px] text-slate-500">Total Jam OT Dibutuhkan</span>
-                <p className="text-base font-black text-amber-600">
-                  {preview.otHoursNeeded} <span className="text-[11px] font-normal text-slate-500">jam</span>
-                </p>
-              </div>
-
-              <div className="bg-white p-3 rounded-lg border border-slate-200">
-                <span className="text-[11px] text-slate-500">Estimasi Hari Lembur</span>
-                <p className="text-base font-black text-blue-700">
-                  {preview.otDaysNeeded} <span className="text-[11px] font-normal text-slate-500">hari ({otHoursPerDay}j/hr)</span>
-                </p>
-              </div>
-
-              <div className="bg-white p-3 rounded-lg border border-slate-200">
-                <span className="text-[11px] text-slate-500">Tanggal Selesai OT</span>
-                <p className="text-xs font-extrabold text-slate-900 mt-1">
-                  {preview.otEndDate}
-                </p>
+              <div className="bg-white p-2.5 rounded-lg border border-amber-200 shadow-2xs">
+                <span className="text-[10.5px] font-semibold text-amber-800 block">Sabtu (5 Jam Kerja)</span>
+                <span className="text-base font-black text-amber-900">
+                  {autoSchedule.targetDailySaturday.toLocaleString()} pcs
+                </span>
+                <span className="text-[10px] text-amber-700 block mt-0.5">5 jam kerja (Bukan 8 jam)</span>
               </div>
             </div>
 
-            {/* LIVE OVERLAP WARNING BOX */}
-            {(potentialOverlapWithPrev || potentialOverlapWithNext) && (
-              <div className="p-3 bg-red-50/90 border border-red-300 rounded-lg flex items-start space-x-2.5 text-xs text-red-900 animate-in fade-in duration-200">
-                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="font-extrabold text-red-800">
-                    Peringatan: Terdapat Potensi Tumpang Tindih (Overlap) pada Line {lineId}!
-                  </p>
-                  {potentialOverlapWithPrev && (
-                    <p className="text-[11px] text-red-700 leading-relaxed">
-                      Style ini mulai pada <strong>{startDate}</strong>, bertepatan dengan sisa jam lembur style <strong>{potentialOverlapWithPrev.styleName}</strong> yang masih berjalan hingga <strong>{potentialOverlapWithPrev.otEndDate}</strong>.
-                    </p>
-                  )}
-                  {potentialOverlapWithNext && (
-                    <p className="text-[11px] text-red-700 leading-relaxed">
-                      Lembur style ini diperkirakan sampai <strong>{preview.otEndDate}</strong>, berbenturan dengan jadwal mulai style berikutnya <strong>{potentialOverlapWithNext.styleName}</strong> ({potentialOverlapWithNext.startDate}).
-                    </p>
-                  )}
+            {/* Rincian Jam Kerja & Istirahat Harian */}
+            <div className="bg-white rounded-lg p-2.5 border border-slate-200 text-[11px] space-y-1 text-slate-700">
+              <div className="font-bold text-slate-800 text-[11.5px] mb-1">
+                Rincian Jadwal Jam Kerja Normal Harian:
+              </div>
+              <div className="flex justify-between py-0.5 border-b border-slate-100">
+                <span>07.30 - 12.00 (4.5 jam kerja)</span>
+                <strong className="text-blue-900">{shifts.slot1.targetPcs.toLocaleString()} pcs</strong>
+              </div>
+              <div className="flex justify-between py-0.5 text-slate-400 bg-slate-50 px-1 rounded-xs">
+                <span>Istirahat Siang: 12.01 - 13.00</span>
+                <span>(60 menit)</span>
+              </div>
+              <div className="flex justify-between py-0.5 border-b border-slate-100">
+                <span>13.01 - 15.30 (2.5 jam kerja)</span>
+                <strong className="text-blue-900">{shifts.slot2.targetPcs.toLocaleString()} pcs</strong>
+              </div>
+              <div className="flex justify-between py-0.5 text-slate-400 bg-slate-50 px-1 rounded-xs">
+                <span>Istirahat Sore: 15.30 - 16.00</span>
+                <span>(30 menit)</span>
+              </div>
+              <div className="flex justify-between py-0.5">
+                <span>16.01 - 18.00 (1.0 jam kerja reguler)</span>
+                <strong className="text-blue-900">{shifts.slot3.targetPcs.toLocaleString()} pcs</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Catatan Opsional */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Catatan Khusus (Opsional)
+            </label>
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Contoh: Model prioritas pengiriman buyer"
+              className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+            />
+          </div>
+
+          {/* ANALISIS DI TARUH DI BAGIAN BAWAH (Permintaan User) */}
+          <div className="pt-2 border-t border-slate-200">
+            <div className="text-xs font-bold text-slate-600 mb-2">
+              Analisis Potensi Tumpang Tindih (Overlap) Line:
+            </div>
+            
+            {overlapConflicts.length > 0 ? (
+              <div className="p-3 bg-red-50 border border-red-300 rounded-xl space-y-1.5 text-xs">
+                <div className="flex items-center space-x-1.5 text-red-700 font-bold">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>Potensi Tumpang Tindih di Line {lineId}</span>
                 </div>
+                {overlapConflicts.map((c) => (
+                  <p key={c.id} className="text-[11px] text-red-600 pl-5">
+                    • Masih ada style <strong>{c.styleName}</strong> (sisa target: {c.remainingQty.toLocaleString()} pcs) terjadwal s/d {c.plannedEndDate}. Target yang masuk di rekap harian akan mengurangi sisa target ini secara otomatis.
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center space-x-2 text-xs text-emerald-800">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Line {lineId} aman tanpa potensi tumpang tindih jadwal.</span>
               </div>
             )}
           </div>
 
-          {/* Catatan Tambahan */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Catatan Hambatan / Instruksi Alokasi Operator
-            </label>
-            <textarea
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Contoh: Perlu pembagian regu lembur untuk obras sisa target dan persiapan setting mesin style baru di shift pagi."
-              className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-            />
-          </div>
-
-          {/* Action Footer */}
-          <div className="pt-2 border-t border-slate-200 flex items-center justify-end space-x-2">
+          {/* Action Buttons */}
+          <div className="pt-3 border-t border-slate-200 flex items-center justify-end space-x-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-xs font-bold bg-[#1a3478] hover:bg-blue-900 text-white rounded-lg shadow-sm active:scale-95 transition-all inline-flex items-center space-x-1.5"
+              className="px-5 py-2 bg-[#1a3478] hover:bg-blue-900 text-white rounded-lg text-xs font-extrabold transition-colors shadow-2xs flex items-center space-x-1.5"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>Simpan Jadwal & Hitung OT</span>
+              <span>Simpan Jadwal Style</span>
             </button>
           </div>
 

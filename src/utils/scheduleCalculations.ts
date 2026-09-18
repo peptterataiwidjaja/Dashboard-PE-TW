@@ -39,16 +39,31 @@ export function getStandardWorkingHoursForDate(date: Date | string, standardHour
   return standardHours;
 }
 
+export interface ShiftBreakdown {
+  slot1: { time: string; minutes: number; hours: number; targetPcs: number };
+  break1: { time: string; minutes: number };
+  slot2: { time: string; minutes: number; hours: number; targetPcs: number };
+  break2: { time: string; minutes: number };
+  slot3: { time: string; minutes: number; hours: number; targetPcs: number };
+  totalNormalMinutes: number;
+  totalNormalHours: number;
+  totalNormalTarget: number;
+  saturdayMinutes: number;
+  saturdayHours: number;
+  saturdayTarget: number;
+}
+
 export interface AutoScheduleResult {
-  baseDailyMonFri: number; // Kapasitas murni tanpa buffer (8 jam)
-  baseDailySaturday: number; // Kapasitas murni Sabtu (5 jam)
-  targetDailyMonFri: number; // Target harian Senin-Jumat dengan buffer 10%
-  targetDailySaturday: number; // Target harian Sabtu (5 jam) dengan buffer 10%
-  effectiveSMV: number; // SMV standar + 10% buffer
+  baseDailyMonFri: number; // Kapasitas 8 jam (480 menit)
+  baseDailySaturday: number; // Kapasitas Sabtu 5 jam (300 menit)
+  targetDailyMonFri: number; // Target harian Senin-Jumat (8 jam)
+  targetDailySaturday: number; // Target harian Sabtu (5 jam)
+  effectiveSMV: number; // Nilai SMV
   plannedEndDate: string; // Tanggal selesai terhitung otomatis
   totalWorkingDays: number;
   totalCalendarDays: number;
   totalRegularHours: number;
+  shifts: ShiftBreakdown;
   dailyBreakdown: Array<{
     date: string;
     dayName: string;
@@ -59,17 +74,59 @@ export interface AutoScheduleResult {
 }
 
 /**
- * Hitung otomatis target harian & durasi selesai jadwal style dari SMV:
- * - Jam kerja: Senin - Jumat = 8 jam (480 menit), Sabtu = 5 jam (300 menit), Minggu = 0 jam (Libur).
- * - Penambahan safety buffer 10% waktu terhadap target awal.
- * - Plot tanggal selesai langsung dari tanggal mulai.
+ * Hitung rincian shift kerja normal:
+ * - Jam kerja normal 8 jam/hari (480 menit):
+ *   1. 07.30 - 12.00 (4.5 jam / 270 menit)
+ *   2. Istirahat: 12.01 - 13.00 (60 menit)
+ *   3. 13.01 - 15.30 (2.5 jam / 150 menit)
+ *   4. Istirahat: 15.30 - 16.00 (30 menit)
+ *   5. 16.01 - 18.00 (1.0 jam kerja reguler / 60 menit)
+ * - Hari Sabtu: 5 jam (300 menit)
+ * - Hari Minggu: 0 jam (Libur, loncat ke hari Senin)
+ */
+export function calculateShiftBreakdown(smv: number, manpower: number): ShiftBreakdown {
+  const safeSMV = Math.max(0.1, Number(smv) || 14.5);
+  const safeMP = Math.max(1, Number(manpower) || 36);
+
+  // Menit kerja per slot
+  const slot1Min = 270; // 07.30 - 12.00 = 4.5 jam
+  const slot2Min = 150; // 13.01 - 15.30 = 2.5 jam
+  const slot3Min = 60;  // 16.01 - 18.00 = 1.0 jam (melengkapi 8 jam normal)
+  const satMin = 300;   // Sabtu = 5 jam
+
+  const target1 = Math.round((safeMP * slot1Min) / safeSMV);
+  const target2 = Math.round((safeMP * slot2Min) / safeSMV);
+  const target3 = Math.round((safeMP * slot3Min) / safeSMV);
+  const totalNormal = target1 + target2 + target3;
+  const satTarget = Math.round((safeMP * satMin) / safeSMV);
+
+  return {
+    slot1: { time: '07.30 - 12.00', minutes: slot1Min, hours: 4.5, targetPcs: target1 },
+    break1: { time: '12.01 - 13.00', minutes: 60 },
+    slot2: { time: '13.01 - 15.30', minutes: slot2Min, hours: 2.5, targetPcs: target2 },
+    break2: { time: '15.30 - 16.00', minutes: 30 },
+    slot3: { time: '16.01 - 18.00', minutes: slot3Min, hours: 1.0, targetPcs: target3 },
+    totalNormalMinutes: 480,
+    totalNormalHours: 8.0,
+    totalNormalTarget: totalNormal,
+    saturdayMinutes: 300,
+    saturdayHours: 5.0,
+    saturdayTarget: satTarget
+  };
+}
+
+/**
+ * Hitung otomatis target harian & durasi selesai jadwal style dari SMV & Manpower:
+ * - Jam kerja normal: 8 jam/hari (Senin-Jumat)
+ * - Jam kerja Sabtu: 5 jam
+ * - Hari Minggu: Libur / diloncat otomatis ke hari Senin
+ * - Proyeksi hari selesai (plannedEndDate) dihitung otomatis tanpa lembur (OT)
  */
 export function calculateAutoScheduleFromSMV({
   orderQty,
   smv,
   manpower = 36,
   startDate,
-  bufferPercent = 10,
   fiveDayWeek = false
 }: {
   orderQty: number;
@@ -82,23 +139,17 @@ export function calculateAutoScheduleFromSMV({
   const safeSMV = Math.max(0.1, Number(smv) || 14.5);
   const safeMP = Math.max(1, Number(manpower) || 36);
   const safeOrder = Math.max(1, Number(orderQty) || 5000);
-  const safeBuffer = Number(bufferPercent) || 10;
   
-  // SMV dengan safety buffer 10% waktu (atau target efisiensi 90%)
-  const effectiveSMV = safeSMV * (1 + safeBuffer / 100);
+  const shifts = calculateShiftBreakdown(safeSMV, safeMP);
+  const targetDailyMonFri = shifts.totalNormalTarget;
+  const targetDailySaturday = fiveDayWeek ? 0 : shifts.saturdayTarget;
 
-  // Kapasitas per hari kerja:
-  // Senin - Jumat: 8 jam (480 menit)
-  const baseDailyMonFri = Math.round((safeMP * 480) / safeSMV);
-  const targetDailyMonFri = Math.round((safeMP * 480) / effectiveSMV);
-
-  // Sabtu: 5 jam (300 menit) jika 6 hari, atau 0 jika 5 hari kerja
-  const satHours = fiveDayWeek ? 0 : 5;
-  const baseDailySaturday = satHours > 0 ? Math.round((safeMP * 300) / safeSMV) : 0;
-  const targetDailySaturday = satHours > 0 ? Math.round((safeMP * 300) / effectiveSMV) : 0;
-
-  // Proyeksikan tanggal selesai mulai dari startDate
+  // Cek tanggal mulai: jika hari Minggu, otomatis loncat ke hari Senin
   const start = new Date(startDate || formatDateYMD(new Date()));
+  if (start.getDay() === 0) {
+    start.setDate(start.getDate() + 1); // Loncat ke hari Senin!
+  }
+
   const curr = new Date(start);
   let accumulated = 0;
   let workingDaysCount = 0;
@@ -115,16 +166,17 @@ export function calculateAutoScheduleFromSMV({
     let dayHours = 0;
 
     if (dayOfWeek === 0) {
-      // Minggu pabrik libur
-      dayTarget = 0;
-      dayHours = 0;
+      // Minggu = Libur / Otomatis loncat ke hari berikutnya
+      curr.setDate(curr.getDate() + 1);
+      loopCount++;
+      continue;
     } else if (dayOfWeek === 6) {
-      // Sabtu: 5 jam reguler (atau 0 jika 5 hari)
+      // Sabtu: 5 jam
       if (!fiveDayWeek && targetDailySaturday > 0) {
         dayHours = 5;
         dayTarget = Math.min(safeOrder - accumulated, targetDailySaturday);
         accumulated += dayTarget;
-        workingDaysCount += 0.625; // Rasio 5/8 hari kerja
+        workingDaysCount += 5 / 8;
         totalHours += 5;
       }
     } else {
@@ -136,13 +188,15 @@ export function calculateAutoScheduleFromSMV({
       totalHours += 8;
     }
 
-    breakdown.push({
-      date: dateStr,
-      dayName: dayNames[dayOfWeek],
-      workingHours: dayHours,
-      targetQty: dayTarget,
-      cumulativeQty: accumulated
-    });
+    if (dayHours > 0) {
+      breakdown.push({
+        date: dateStr,
+        dayName: dayNames[dayOfWeek],
+        workingHours: dayHours,
+        targetQty: dayTarget,
+        cumulativeQty: accumulated
+      });
+    }
 
     if (accumulated >= safeOrder) {
       break;
@@ -156,15 +210,16 @@ export function calculateAutoScheduleFromSMV({
   const totalCalendarDays = loopCount + 1;
 
   return {
-    baseDailyMonFri,
-    baseDailySaturday,
+    baseDailyMonFri: targetDailyMonFri,
+    baseDailySaturday: targetDailySaturday,
     targetDailyMonFri,
     targetDailySaturday,
-    effectiveSMV: Number(effectiveSMV.toFixed(2)),
+    effectiveSMV: safeSMV,
     plannedEndDate,
     totalWorkingDays: Math.ceil(workingDaysCount),
     totalCalendarDays,
     totalRegularHours: totalHours,
+    shifts,
     dailyBreakdown: breakdown
   };
 }
@@ -379,7 +434,8 @@ export function calculateScheduleMetrics(
   };
 }
 
-// Deteksi Konflik Tumpang Tindih (Overlap) Style Baru vs Sisa OT Style Lama pada Kategori Line
+// Deteksi Otomatis Potensi Tumpang Tindih (Overlap) Style pada Kategori Line
+// Input rekap harian mengurangi sisa target produksi sehingga overlap terupdate otomatis
 export function detectScheduleOverlaps(schedules: StyleScheduleRecord[]): ScheduleOverlapConflict[] {
   const conflicts: ScheduleOverlapConflict[] = [];
 
@@ -392,52 +448,65 @@ export function detectScheduleOverlaps(schedules: StyleScheduleRecord[]): Schedu
     byLine[item.lineId].push(item);
   }
 
-  // Periksa urutan kronologis per line
+  // Periksa setiap line
   for (const lineIdStr of Object.keys(byLine)) {
     const lineId = Number(lineIdStr);
-    const lineSchedules = byLine[lineId].sort((a, b) => a.startDate.localeCompare(b.startDate));
+    const lineSchedules = byLine[lineId];
 
-    for (let i = 0; i < lineSchedules.length - 1; i++) {
-      const prev = lineSchedules[i];
-      const next = lineSchedules[i + 1];
+    for (let i = 0; i < lineSchedules.length; i++) {
+      for (let j = i + 1; j < lineSchedules.length; j++) {
+        const s1 = lineSchedules[i];
+        const s2 = lineSchedules[j];
 
-      // Jika style sebelumnya masih memiliki sisa dan jadwal OT melampaui atau sama dengan start date style baru
-      if (prev.needsOT && prev.otDaysNeeded > 0 && prev.otEndDate >= next.startDate) {
-        
-        // Loop setiap hari overlap dari next.startDate hingga prev.otEndDate
-        let currDate = new Date(next.startDate);
-        const otEnd = new Date(prev.otEndDate);
+        // Jika salah satu sudah selesai penuh (sisa = 0), tidak ada konflik tumpang tindih
+        if (s1.remainingQty <= 0 || s2.remainingQty <= 0) {
+          continue;
+        }
 
-        while (currDate <= otEnd) {
-          const dateStr = formatDateYMD(currDate);
-          
-          conflicts.push({
-            id: `overlap-${prev.id}-${next.id}-${dateStr}`,
-            lineId: prev.lineId,
-            lineName: prev.lineName,
-            date: dateStr,
-            previousStyle: {
-              id: prev.id,
-              styleName: prev.styleName,
-              buyer: prev.buyer,
-              remainingQty: prev.remainingQty,
-              otHours: prev.otHoursPerDay,
-              otPeriod: '17:00 - 19:30 (Jam Lembur)'
-            },
-            incomingStyle: {
-              id: next.id,
-              styleName: next.styleName,
-              buyer: next.buyer,
-              orderQty: next.orderQty,
-              dailyTargetQty: next.dailyTargetQty,
-              regularPeriod: '08:00 - 17:00 (Shift Reguler)'
-            },
-            severity: prev.remainingQty > 500 ? 'critical' : 'warning',
-            recommendation: `Alokasikan mesin sewing utama untuk ${next.styleName} pada shift reguler (08:00-17:00). Lanjutkan sisa ${prev.remainingQty} pcs ${prev.styleName} di jam lembur (17:00-19:30) dengan tim operator khusus agar tidak terjadi kemacetan setup.`
-          });
+        // Tentukan rentang tumpang tindih tanggal kalender
+        const startOverlap = s1.startDate > s2.startDate ? s1.startDate : s2.startDate;
+        const endOverlap = s1.plannedEndDate < s2.plannedEndDate ? s1.plannedEndDate : s2.plannedEndDate;
 
-          // Maju 1 hari
-          currDate.setDate(currDate.getDate() + 1);
+        if (startOverlap <= endOverlap) {
+          let currDate = new Date(startOverlap);
+          const endDate = new Date(endOverlap);
+
+          while (currDate <= endDate) {
+            // Lewati hari Minggu karena pabrik libur
+            if (currDate.getDay() !== 0) {
+              const dateStr = formatDateYMD(currDate);
+              const conflictId = `overlap-${lineId}-${s1.id}-${s2.id}-${dateStr}`;
+
+              if (!conflicts.some(c => c.id === conflictId)) {
+                conflicts.push({
+                  id: conflictId,
+                  lineId,
+                  lineName: s1.lineName || `Line ${lineId}`,
+                  date: dateStr,
+                  previousStyle: {
+                    id: s1.id,
+                    styleName: s1.styleName,
+                    buyer: s1.buyer,
+                    remainingQty: s1.remainingQty,
+                    otHours: 0,
+                    otPeriod: 'Shift 07.30 - 18.00'
+                  },
+                  incomingStyle: {
+                    id: s2.id,
+                    styleName: s2.styleName,
+                    buyer: s2.buyer,
+                    orderQty: s2.orderQty,
+                    dailyTargetQty: s2.dailyTargetQty,
+                    regularPeriod: 'Shift 07.30 - 18.00'
+                  },
+                  severity: (s1.remainingQty > 500 || s2.remainingQty > 500) ? 'critical' : 'warning',
+                  recommendation: `Line ${lineId} teralokasi untuk 2 style bersamaan (${s1.styleName} sisa target: ${s1.remainingQty.toLocaleString()} pcs & ${s2.styleName} target: ${s2.orderQty.toLocaleString()} pcs) pada tanggal ${dateStr}. Sesuaikan jadwal mulai atau pisahkan ke line sewing lain.`
+                });
+              }
+            }
+
+            currDate.setDate(currDate.getDate() + 1);
+          }
         }
       }
     }

@@ -274,7 +274,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden sm:inline">Ikhtisar & KPI</span>
           </button>
 
-          {/* TAB BARU: JADWAL STYLE & LEMBUR (OT) */}
+          {/* TAB: JADWAL STYLE SEWING */}
           <button
             id="tab-style-schedule"
             onClick={() => onTabChange('style-schedule')}
@@ -285,8 +285,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Calendar className="w-3.5 h-3.5" />
-            <span className="sm:hidden">Jadwal & OT</span>
-            <span className="hidden sm:inline">Jadwal Style & OT</span>
+            <span className="sm:hidden">Jadwal Style</span>
+            <span className="hidden sm:inline">Jadwal Style Sewing</span>
             {overlapCount > 0 ? (
               <span className="inline-flex items-center px-1.5 py-0.2 rounded-full bg-red-600 text-white text-[9px] font-black animate-pulse">
                 ⚡ {overlapCount}
